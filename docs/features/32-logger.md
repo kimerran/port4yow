@@ -78,6 +78,41 @@ the same class of "the test refutes itself" error the #2 review caught, in a dif
 This is also the gitleaks step earning its place: it caught something on its first real
 opportunity.
 
+## Review follow-up — round 1, findings 2 and 3
+
+Both were in the redaction path this module exists to guarantee, and both reproduced.
+
+**Finding 2 — `clientIp` logged a raw IP while `remote_ip` was redacted.** Same value, same
+line, different key shape: the anchor `(^|_)ip` caught snake_case and missed camelCase.
+`clientIp` is the likelier name once middleware (#24) logs requests. Fixed by normalising
+camelCase to underscores before matching, applied to the email branch too.
+
+**Finding 3 — caller context silently overwrote the envelope.** The spread came last, so
+`logger.error("real", { level: "debug", message: "spoofed" })` emitted
+`{"level":"debug","message":"spoofed"}`. Level-based alerting drops that line, the real
+message is gone, and it is a log-injection primitive the moment a context value is
+user-derived. Context now spreads **first**; `audit()` routes through the same `emit()` and
+inherits it.
+
+Coverage went 25 → **47 tests**: 9 IP shapes, 8 false-positive guards, 4 email shapes, and
+envelope-spoofing tests for both `logger` and `audit`.
+
+**What the mutation testing actually revealed.** My first attempt mutated the `IP_KEY` regex
+and only **1** test failed — because the tests already ran against the _normalised_ key, so
+the old regex still matched `client_ip`. The regex change was nearly cosmetic; **`normalizeKey`
+is the load-bearing part.** Bypassing it fails **5** IP tests and **2** email tests. The
+lesson: mutate the mechanism you believe is doing the work, and if barely anything fails,
+your model of the fix is wrong — not the test suite.
+
+| Mutation                                    | Tests failing |
+| ------------------------------------------- | ------------- |
+| `normalizeKey` bypassed on the IP branch    | **5**         |
+| `normalizeKey` bypassed on the email branch | **2**         |
+| envelope order reverted                     | **1**         |
+| secret-key redaction disabled               | **11**        |
+| email masking disabled                      | **2**         |
+| depth limit removed                         | **1**         |
+
 ## Blocked — two acceptance criteria cannot be met yet
 
 #32 was moved from Sprint 6 to Sprint 1 because every later slice needs the logger, but two of

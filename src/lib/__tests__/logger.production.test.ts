@@ -75,6 +75,45 @@ describe("production output (SPEC §14.11)", () => {
     expect(out).toContain("example.com");
   });
 
+  // Caller context must never reshape the envelope: with the spread last,
+  // logger.error(..., { level: "debug" }) emitted "level":"debug" — alerting
+  // drops the line, the real message is lost, and it is a log-injection
+  // primitive once any context value is user-derived.
+  it("does not let context overwrite level, message or timestamp", () => {
+    const out = capture(() =>
+      logger.error("real message", {
+        level: "debug",
+        message: "spoofed",
+        timestamp: "1970-01-01T00:00:00.000Z",
+      }),
+    );
+    const parsed = JSON.parse(out.trim()) as Record<string, unknown>;
+    expect(parsed.level).toBe("error");
+    expect(parsed.message).toBe("real message");
+    expect(parsed.timestamp).not.toBe("1970-01-01T00:00:00.000Z");
+  });
+
+  it("protects the audit envelope the same way", () => {
+    const out = capture(() =>
+      audit({
+        actorId: "user_1",
+        action: "project.publish",
+        entity: "Project",
+        entityId: "p9",
+        outcome: "success",
+        detail: { level: "debug", message: "spoofed" },
+      }),
+    );
+    const parsed = JSON.parse(out.trim()) as Record<string, unknown>;
+    expect(parsed.level).toBe("info");
+    expect(parsed.message).toBe("audit");
+  });
+
+  it("redacts a camelCase IP in production format", () => {
+    const out = capture(() => logger.error("req", { clientIp: "203.0.113.9" }));
+    expect(out).not.toContain("203.0.113.9");
+  });
+
   it("drops debug below LOG_LEVEL=info", () => {
     expect(capture(() => logger.debug("noisy"))).toBe("");
   });

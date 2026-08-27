@@ -24,8 +24,22 @@ const SECRET_KEY =
   /(pass(word)?|secret|token|hash|salt|apikey|api_key|authorization|cookie|session|credential|signature)/i;
 
 /** Keys whose values are identifying and must be reduced, not dropped. */
-const EMAIL_KEY = /email/i;
-const IP_KEY = /(^|_)ip($|_|address)/i;
+/**
+ * Key names arrive in both camelCase and snake_case, so match against a single
+ * normalised form. Without this, `remote_ip` was redacted while `clientIp` — the
+ * same value, and the likelier name once middleware (#24) logs requests — passed
+ * straight through.
+ */
+const normalizeKey = (key: string): string =>
+  key.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+
+const EMAIL_KEY = /email/;
+/**
+ * Anchored on purpose. A bare /ip/ would redact `description`, `recipient`,
+ * `shipping` and `equipment`; anchoring to word boundaries in the normalised key
+ * catches every real shape without those false positives.
+ */
+const IP_KEY = /(^|_)ip(_?(address|v4|v6))?($|_)/;
 
 const REDACTED = "[redacted]";
 
@@ -56,10 +70,11 @@ export function redact(value: unknown, depth = 0): unknown {
   if (typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      const normalized = normalizeKey(key);
       if (SECRET_KEY.test(key)) out[key] = REDACTED;
-      else if (EMAIL_KEY.test(key))
+      else if (EMAIL_KEY.test(normalized))
         out[key] = typeof val === "string" ? maskEmail(val) : REDACTED;
-      else if (IP_KEY.test(key)) out[key] = REDACTED;
+      else if (IP_KEY.test(normalized)) out[key] = REDACTED;
       else out[key] = redact(val, depth + 1);
     }
     return out;
@@ -76,11 +91,16 @@ export interface LogContext {
 function emit(level: Level, message: string, context?: LogContext): void {
   if (RANK[level] < RANK[env.LOG_LEVEL]) return;
 
+  // Context spreads FIRST so it can never overwrite the envelope. With the spread
+  // last, `logger.error("real", { level: "debug" })` emitted `"level":"debug"`:
+  // level-based alerting silently drops the line, the real message is lost, and it
+  // becomes a log-injection primitive the moment a context value is user-derived.
+  // audit() routes through here too, so it inherits the same protection.
   const line = {
+    ...(context ? (redact(context) as Record<string, unknown>) : {}),
     level,
     message,
     timestamp: new Date().toISOString(),
-    ...(context ? (redact(context) as Record<string, unknown>) : {}),
   };
 
   const stream =

@@ -60,17 +60,51 @@ describe("redact", () => {
     expect(JSON.stringify(out)).not.toContain(value);
   });
 
-  it("keeps an email's domain but drops the local part", () => {
-    const out = redact({ email: "mark@example.com" }) as Record<string, string>;
-    expect(out.email).toBe("[redacted]@example.com");
-    expect(out.email).not.toContain("mark");
+  // camelCase included: the same normalisation the IP branch needs applies here,
+  // and `userEmail`/`contactEmail` are the likelier field names in practice.
+  it.each(["email", "userEmail", "contactEmail", "email_address"])(
+    "keeps the domain but drops the local part for %s",
+    (key) => {
+      const out = redact({ [key]: "mark@example.com" }) as Record<
+        string,
+        string
+      >;
+      expect(out[key]).toBe("[redacted]@example.com");
+      expect(out[key]).not.toContain("mark");
+    },
+  );
+
+  // camelCase and snake_case both, because `remote_ip` was redacted while
+  // `clientIp` — the same value — passed through. `clientIp` is the likelier name
+  // once middleware (#24) logs requests.
+  it.each([
+    "ip",
+    "ipAddress",
+    "ip_address",
+    "remote_ip",
+    "clientIp",
+    "userIp",
+    "sourceIP",
+    "peerIp",
+    "ipv4",
+  ])("drops raw IP under %s", (key) => {
+    const out = redact({ [key]: "203.0.113.7" }) as Record<string, unknown>;
+    expect(out[key]).toBe("[redacted]");
   });
 
-  it("drops raw IPs", () => {
-    for (const key of ["ip", "ipAddress", "remote_ip"]) {
-      const out = redact({ [key]: "203.0.113.7" }) as Record<string, unknown>;
-      expect(out[key]).toBe("[redacted]");
-    }
+  // The anchoring is load-bearing: a bare /ip/ redacts all of these.
+  it.each([
+    "description",
+    "recipient",
+    "zip",
+    "shipping",
+    "clipboard",
+    "equipment",
+    "script",
+    "ipsum",
+  ])("does not touch %s", (key) => {
+    const out = redact({ [key]: "keep-me" }) as Record<string, unknown>;
+    expect(out[key]).toBe("keep-me");
   });
 
   it("redacts nested values, not just top-level keys", () => {
