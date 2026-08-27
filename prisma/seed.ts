@@ -64,8 +64,14 @@ const STACK: ReadonlyArray<{
   { name: "Railway", suit: Suit.CLUBS, sortOrder: 2, featured: false },
   { name: "GitHub Actions", suit: Suit.CLUBS, sortOrder: 3, featured: false },
   { name: "MinIO", suit: Suit.CLUBS, sortOrder: 4, featured: false },
-  { name: "Vitest", suit: Suit.HEARTS, sortOrder: 1, featured: false },
-  { name: "Playwright", suit: Suit.HEARTS, sortOrder: 2, featured: false },
+  { name: "Vitest", suit: Suit.CLUBS, sortOrder: 5, featured: false },
+  { name: "Playwright", suit: Suit.CLUBS, sortOrder: 6, featured: false },
+  // ♥ Hearts is deliberately empty. BRAND §6 defines it as "Open source" —
+  // provenance, i.e. Mark's own contributions — not "happens to be OSS". Read the
+  // other way every item here qualifies and the category carries no information.
+  // Vitest and Playwright are test runners: ♣ Infrastructure & tooling. Leaving ♥
+  // honestly empty until there is real work to put in it; see the handoff's
+  // content TODOs.
 ];
 
 /**

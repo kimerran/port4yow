@@ -60,6 +60,31 @@ Nothing.
 
 **#32 — structured logger, correlation ids, audit log.** Last open Sprint 1 issue.
 
+## Review follow-up — ♥ Hearts contradicted BRAND §6
+
+The seed put **Vitest and Playwright under ♥ Hearts**, which BRAND §6 defines as _Open source_.
+They are test runners — ♣ Infrastructure & tooling by that table. Moved both.
+
+The reasoning matters more than the two rows. ♥ is the only category in that table describing
+**provenance** rather than a technology area: it is the slot for Mark's own open-source
+contributions. Read as merely "this is open-source software", TypeScript, Node, Postgres,
+Prisma, Astro, Tailwind, React, Docker and MinIO all qualify equally and the category carries
+no information at all. Filling it with dependencies would have quietly redefined it before
+anything real could occupy it — and it is **user-visible**: SPEC §5's `2 — The stack` section
+renders these grouped by suit with a text label, so the public site would have read
+_"Open source: Vitest, Playwright"_.
+
+**♥ is now honestly empty** (verified: 0 rows). Seeded taxonomy:
+
+| Suit       | Count | Items                                                      |
+| ---------- | ----- | ---------------------------------------------------------- |
+| ♠ Spades   | 4     | TypeScript, Node.js, PostgreSQL, Prisma                    |
+| ◆ Diamonds | 3     | Astro, Tailwind CSS, React                                 |
+| ♣ Clubs    | 6     | Docker, Railway, GitHub Actions, MinIO, Vitest, Playwright |
+| ♥ Hearts   | **0** | — awaiting real content                                    |
+
+Idempotency re-verified after the change; gate still green.
+
 ## Content TODOs
 
 Every seeded string is placeholder copy awaiting Mark's real text, marked `TODO(content)`
@@ -71,3 +96,7 @@ embarrassing if it ships, and explicitly not the mock's rejected hero line:
 - `social.github`, `social.linkedin` — **`social.linkedin` is a bare URL stub and needs a real
   profile path**
 - All five sample-project text fields
+- **♥ Hearts has no stack items.** Not an oversight — a question for Mark: does the stack
+  section list actual open-source contributions, or does ♥ belong to _projects_ rather than
+  stack items? An empty category is better than a wrongly-populated one, but the public
+  "The stack" section will show three suits rather than four until this is answered.
