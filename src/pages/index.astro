@@ -2,6 +2,7 @@
 import Button from "../components/Button.astro";
 import HeroCard from "../components/HeroCard.astro";
 import ProjectTile from "../components/ProjectTile.astro";
+import ContactForm from "../components/ContactForm.astro";
 import RankIndex from "../components/RankIndex.astro";
 import SuitGlyph from "../components/SuitGlyph.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
@@ -117,7 +118,9 @@ const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
     <h2 class="flex items-baseline gap-md font-display text-headline-md">
       <RankIndex rank="K" /> Contact
     </h2>
-    {/* The form itself is #21; the links SPEC §5 asks for are here now. */}
+    <ContactForm />
+
+    {/* Direct links, alongside the form. */}
     <ul class="flex flex-wrap gap-lg">
       {
         github && (
@@ -148,3 +151,8 @@ const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
     </ul>
   </section>
 </BaseLayout>
+
+<script>
+  import { initContactForm } from "../scripts/contact-form.ts";
+  initContactForm();
+</script>
