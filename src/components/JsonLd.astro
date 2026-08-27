@@ -1,0 +1,26 @@
+---
+/**
+ * Structured data (SPEC §5). The ONLY place `set:html` is permitted outside the
+ * sanitised-Markdown path, and the reason it exists as a component: the exception
+ * is scoped to this one file rather than granted wherever JSON-LD is needed.
+ *
+ * `set:html` is unavoidable here. Astro does NOT evaluate expressions inside a
+ * raw-text `<script>` element — `<script>{expr}</script>` emits the literal text
+ * `{expr}`, verified against a built server.
+ *
+ * The XSS risk `astro/no-set-html-directive` warns about is real and handled:
+ * `JSON.stringify` escapes quotes but NOT `<`, so a value containing
+ * `</script>` would terminate the element early. Escaping `<` to `<` closes
+ * that — the sequence can no longer end the tag, and JSON parsers read `<`
+ * as `<`, so the structured data is unchanged.
+ */
+interface Props {
+  data: unknown;
+}
+
+const { data } = Astro.props;
+
+const json = JSON.stringify(data).replace(/</g, "\\u003c");
+---
+
+<script type="application/ld+json" is:inline set:html={json} />

@@ -190,7 +190,43 @@ export default defineConfig(
      * and `astro check` still type-checks these files properly.
      */
     files: ["**/*.astro"],
-    rules: { "@typescript-eslint/no-unsafe-return": "off" },
+    rules: {
+      "@typescript-eslint/no-unsafe-return": "off",
+      /**
+       * `no-misused-promises` CRASHES on an early `return` in Astro frontmatter:
+       * "Non-null Assertion Failed: Expected node to have a parent." The rule
+       * walks up from the return statement and `astro-eslint-parser` gives it no
+       * parent for a top-level frontmatter return.
+       *
+       * Reproduced in six lines:
+       *   ---
+       *   const x: string | null = null;
+       *   if (!x) { return new Response(null, { status: 404 }); }
+       *   ---
+       *
+       * `astro check` reports 0 errors on the same file, and this is the
+       * idiomatic Astro SSR 404 — SPEC §5 requires exactly it. A crashing rule
+       * cannot report anything anyway, so switching it off in .astro loses no
+       * coverage. It stays on for every .ts file.
+       */
+      "@typescript-eslint/no-misused-promises": "off",
+    },
+  },
+
+  {
+    /**
+     * JSON-LD is the one place `set:html` is permitted outside the sanitised
+     * Markdown path (#16). Astro does not evaluate expressions inside a raw-text
+     * <script>, so there is no alternative — verified against a built server,
+     * which emitted the literal text `{expr}`.
+     *
+     * Scoped to this single component ON PURPOSE: the component escapes `<` to
+     * \u003c so a value containing `</script>` cannot terminate the element, and
+     * every other file in the codebase stays guarded. This is the documented
+     * exception #33 anticipated, not a blanket opt-out.
+     */
+    files: ["src/components/JsonLd.astro"],
+    rules: { "astro/no-set-html-directive": "off" },
   },
 
   // Must stay last: turns off every rule Prettier owns.
