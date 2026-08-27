@@ -47,11 +47,11 @@ something measures it.
 ## Tooling — `no-unsafe-return` disabled for `.astro` only
 
 `typescript-eslint` cannot type markup returned from a template expression through
-`astro-eslint-parser`: a `.map()` rendering elements reports *"Unsafe return of a value of
-type error"*. **TypeScript itself is fine** — `astro check` reports 0 errors on the same file,
+`astro-eslint-parser`: a `.map()` rendering elements reports _"Unsafe return of a value of
+type error"_. **TypeScript itself is fine** — `astro check` reports 0 errors on the same file,
 so this is a parser gap rather than an `any` leaking in. Reproduced in four lines:
 
-```astro
+```text
 const xs = [{ h: "/a" }];
 <ul>{xs.map((x) => <li><a href={x.h}>x</a></li>)}</ul>
 ```
@@ -84,6 +84,30 @@ i.e. a `src/scripts/*.ts` imported so Astro bundles it to a file. **#11 should v
 before writing the rail**, rather than discovering it at review. I did not solve it here: it is
 #11's scope and guessing at the mechanism without a script to test is how the wrong pattern
 gets baked in.
+
+## CI caught a lint failure I had reported as green
+
+`pnpm lint` failed on CI after I stated it passed. It fails locally too, so this was a
+reporting error, not an environment difference.
+
+**Prettier parses embedded code fences**, and two handoff documents contained _fragments_
+rather than complete documents:
+
+```text
+docs/features/10-baselayout.md  SyntaxError: Unexpected token, expected "}"
+docs/features/5-prisma-schema.md  SyntaxError: The input should contain exactly one expression
+```
+
+An `astro` fence holding a bare `.map()` expression, and a `json` fence holding
+`"pnpm": { … }` — an object _member_, not a JSON document. Both retagged `text`.
+
+**Worth knowing for every future handoff: a fenced snippet is compiled, not quoted.** Tag a
+fragment `text` or make it a valid standalone document.
+
+The reporting error is the more important half. I ran
+`pnpm lint >/dev/null 2>&1 && echo "lint green ✓"` and reported the result — the same shape as
+the `astro check` grep mistake in #1, where a filtered command stood in for the real output.
+Both times the fix is the same: show the command's own result rather than a substitute for it.
 
 ## Next
 

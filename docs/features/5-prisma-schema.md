@@ -66,7 +66,7 @@ Transitive, and Prisma has not shipped a release that bumps it. Pinned it forwar
 pnpm override rather than shipping a known-vulnerable dependency or weakening the audit
 threshold:
 
-```json
+```text
 "pnpm": { "overrides": { "deepmerge-ts": ">=8.0.0" } }
 ```
 
