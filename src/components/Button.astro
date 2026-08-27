@@ -1,0 +1,57 @@
+---
+/**
+ * BRAND §7 — buttons never become pills. `radius-lg` 8px, mono uppercase 12px,
+ * +0.1em tracking.
+ *
+ * Primary is `luminous-cyan` fill with `ink-navy` text (12.4:1 — passes). Cyan
+ * is never used as TEXT on white: ~2.2:1 (BRAND §2).
+ */
+interface Props {
+  variant?: "primary" | "secondary";
+  href?: string;
+  type?: "button" | "submit";
+  disabled?: boolean;
+  class?: string;
+}
+
+const {
+  variant = "primary",
+  href,
+  type = "button",
+  disabled = false,
+  class: className = "",
+} = Astro.props;
+
+const base =
+  "font-mono text-label-sm inline-flex min-h-11 items-center justify-center rounded-lg px-lg uppercase transition-transform duration-300";
+
+const variants = {
+  primary: "bg-luminous-cyan text-ink-navy",
+  secondary: "bg-card-face text-ink-navy border border-deep-teal/20",
+} as const;
+
+// BRAND §7 — disabled drops to outline-variant with ink-muted text and no lift.
+const disabledClasses = "bg-outline-variant text-ink-muted cursor-not-allowed";
+
+// Hover lifts 4px; reduced motion removes it (BRAND §9).
+const lift =
+  "hover:-translate-y-1 motion-reduce:transform-none motion-reduce:transition-none";
+
+const classes = [
+  base,
+  disabled ? disabledClasses : `${variants[variant]} ${lift}`,
+  className,
+];
+---
+
+{
+  href && !disabled ? (
+    <a href={href} class:list={classes}>
+      <slot />
+    </a>
+  ) : (
+    <button type={type} disabled={disabled} class:list={classes}>
+      <slot />
+    </button>
+  )
+}
