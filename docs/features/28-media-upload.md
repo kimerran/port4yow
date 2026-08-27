@@ -160,3 +160,81 @@ Nothing blocks this issue.
 ## Content TODOs
 
 None.
+
+---
+
+## Review round 2 — finding addressed
+
+### The effective upload limit was 1 MB, not 8 MB (fixed)
+
+The reviewer is right, and this is the most useful kind of finding: the
+acceptance criterion **passed for the wrong reason**.
+
+Astro refuses an Action body larger than `security.actionBodySizeLimit` _before
+the handler runs_, and its default is **1 MiB**. So `MAX_UPLOAD_BYTES = 8 MB`
+was never reached. "An 8.1 MB upload is rejected" was satisfied — by a framework
+limit eight times stricter than the spec's — while **every upload between 1 MB
+and 8 MB was rejected too**, which is most of the range SPEC §9 allows and
+exactly where real screenshots live.
+
+Reproduced before fixing, with a valid 5.43 MB JPEG:
+
+```
+-> 413 {"code":"CONTENT_TOO_LARGE","message":"Request body exceeds 1048576 bytes"}
+   MediaAsset rows: 0
+```
+
+Two consequences the reviewer names, both correct:
+
+- **The app's limit and its error copy were dead code.** `UploadRejected` for
+  oversize could not fire, so an admin saw a raw framework string instead of the
+  interface's own words.
+- **The mutation result was hollow.** "Drop the 8 MB limit → 1 integration test
+  fails" was true of a check production never reached.
+
+`security.actionBodySizeLimit` is now **9 MiB** — above the app's 8 MB with room
+for multipart overhead, and deliberately not wide open, so a wildly oversized
+body is still refused cheaply at the framework layer.
+
+### Verified after the fix
+
+| Request                                              | Before                              | After                                                                      |
+| ---------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------- |
+| valid 5.43 MB JPEG                                   | **413** `CONTENT_TOO_LARGE`, 0 rows | **200**, 8 derivatives stored                                              |
+| 8.40 MB file (over SPEC's limit, under the body cap) | never reached the app               | **400** `That file is larger than 8 MB.` — field-keyed, the app's own copy |
+
+The oversized case now returns an `AstroActionInputError` with
+`fields.file: ["That file is larger than 8 MB."]`, which the form can render
+against the field, rather than a framework sentence about bytes.
+
+### The regression test, and why it reads the config as text
+
+`src/lib/__tests__/uploadlimits.test.ts` asserts the framework limit stays above
+`MAX_UPLOAD_BYTES`, with headroom, and that neither drifts. It reads
+`astro.config.mjs` as **text** rather than importing it — the config pulls in
+integrations that cannot load under vitest.
+
+Nothing else catches this class of bug: every other upload test calls
+`processUpload` directly with a byte array and never crosses the HTTP boundary,
+so the limit that actually applies in production is invisible to them.
+
+Mutation: putting the limit back to 1 MiB fails **3** tests. Before this commit
+it failed 0.
+
+### On the no-op mutations
+
+The reviewer's suggestion is right — it belongs in the conventions rather than in
+one PR body. Two rules, both learned the same way this sprint:
+
+1. **Assert the mutant applied** before trusting a zero. A replacement string
+   that no longer matches reads exactly like "not covered".
+2. **Assert the outcome, not the mechanism.** #17's images had a populated
+   `currentSrc` while nothing painted; #27's form had a valid-looking `action`
+   pointing at a route that did not exist; this had a size constant that was
+   never consulted. In each case the mechanism was observable and the outcome
+   was not.
+
+## Gate
+
+`typecheck` 0 errors / 0 warnings / 0 hints · `lint` PASS · `test` **429**
+passed, 62 skipped · `build` PASS. Integration **62/62** across five suites.
