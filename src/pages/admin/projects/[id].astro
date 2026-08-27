@@ -1,0 +1,343 @@
+---
+import { actions } from "astro:actions";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import Button from "../../../components/Button.astro";
+import { assertAdmin } from "../../../lib/admin";
+import { db } from "../../../lib/db";
+import { publishBlockers } from "../../../lib/projects";
+
+/**
+ * `GET /admin/projects/[id]` — edit form (#27).
+ *
+ * Posts to the `updateProject` Action, so it works without JavaScript. The
+ * publish and unpublish controls are separate forms posting to their own
+ * actions: publishing is a different operation with a different gate, not a
+ * checkbox on the edit form.
+ */
+assertAdmin(Astro.locals);
+
+const { id } = Astro.params;
+
+const project = id
+  ? await db.project.findUnique({
+      where: { id },
+      // Narrow select — never the whole row into a template (AGENT §2).
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        suit: true,
+        status: true,
+        summary: true,
+        role: true,
+        timeline: true,
+        problem: true,
+        body: true,
+        outcome: true,
+        liveUrl: true,
+        repoUrl: true,
+        coverImageId: true,
+        coverImage: { select: { altText: true } },
+        stack: { orderBy: { sortOrder: "asc" }, select: { stackItemId: true } },
+      },
+    })
+  : null;
+
+if (!project) return Astro.rewrite("/404");
+
+const updateResult = Astro.getActionResult(actions.updateProject);
+const publishResult = Astro.getActionResult(actions.publishProject);
+
+const [stackItems, assets] = await Promise.all([
+  db.stackItem.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  }),
+  db.mediaAsset.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: { id: true, key: true, altText: true },
+  }),
+]);
+
+/* SPEC §4 — the slug is immutable once published. The action enforces it; this
+   only explains why the input is read-only. */
+const slugLocked = project.status === "PUBLISHED";
+
+const values = {
+  title: project.title,
+  slug: project.slug,
+  suit: project.suit,
+  summary: project.summary,
+  role: project.role,
+  timeline: project.timeline,
+  problem: project.problem,
+  body: project.body,
+  outcome: project.outcome,
+  liveUrl: project.liveUrl ?? "",
+  repoUrl: project.repoUrl ?? "",
+  coverImageId: project.coverImageId ?? "",
+  stackItemIds: project.stack.map((s) => s.stackItemId),
+};
+
+/* Shown so the admin knows what is missing before pressing publish. The action
+   re-evaluates this from the database — this is the explanation (SPEC §6). */
+const blockers = publishBlockers(project);
+
+const FIELD_LABELS: Record<string, string> = {
+  title: "title",
+  summary: "summary",
+  problem: "problem",
+  body: "body",
+  outcome: "outcome",
+  cover: "cover image",
+  coverAltText: "cover alt text",
+};
+
+const field =
+  "min-h-11 w-full rounded border border-outline-variant bg-card-face px-md py-sm text-body-md text-ink-navy";
+const label = "font-mono text-label-sm text-ink-muted";
+---
+
+<AdminLayout title={`${project.title} — admin`} heading={project.title}>
+  <section class="flex flex-wrap items-center gap-md">
+    <span class="font-mono text-label-sm text-ink-muted">
+      {project.status.toLowerCase()}
+    </span>
+
+    {
+      project.status === "PUBLISHED" ? (
+        <form method="POST" action={actions.unpublishProject}>
+          <input type="hidden" name="id" value={project.id} />
+          <Button type="submit" variant="secondary">
+            Unpublish
+          </Button>
+        </form>
+      ) : (
+        <form method="POST" action={actions.publishProject}>
+          <input type="hidden" name="id" value={project.id} />
+          <Button type="submit" disabled={blockers.length > 0}>
+            Publish
+          </Button>
+        </form>
+      )
+    }
+
+    {
+      blockers.length > 0 && (
+        <p class="text-[14px] text-error">
+          Needs {blockers.map((b) => FIELD_LABELS[b] ?? b).join(", ")}
+        </p>
+      )
+    }
+
+    {
+      project.status === "PUBLISHED" && (
+        <a
+          class="text-deep-teal underline underline-offset-4"
+          href={`/work/${project.slug}`}
+        >
+          View public page
+        </a>
+      )
+    }
+  </section>
+
+  <p class="text-[14px] text-error" role="status" aria-live="polite">
+    {updateResult?.error?.message ?? publishResult?.error?.message}
+  </p>
+
+  <form
+    method="POST"
+    action={actions.updateProject}
+    class="flex max-w-[720px] flex-col gap-lg"
+  >
+    <input type="hidden" name="id" value={project.id} />
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-title">Title</label>
+      <input
+        id="f-title"
+        name="title"
+        type="text"
+        required
+        maxlength="120"
+        class={field}
+        value={values.title}
+      />
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-slug">Slug</label>
+      <input
+        id="f-slug"
+        name="slug"
+        type="text"
+        required
+        maxlength="96"
+        class={field}
+        value={values.slug}
+        readonly={slugLocked}
+        aria-describedby="f-slug-help"
+      />
+      <p id="f-slug-help" class="font-mono text-label-sm text-ink-muted">
+        {
+          slugLocked
+            ? "Published — the slug is fixed. Other people have linked to it."
+            : "Lowercase words separated by hyphens."
+        }
+      </p>
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-suit">Suit</label>
+      <select id="f-suit" name="suit" class={field}>
+        {
+          ["DIAMONDS", "SPADES", "HEARTS", "CLUBS"].map((suit) => (
+            <option value={suit} selected={values.suit === suit}>
+              {suit.charAt(0) + suit.slice(1).toLowerCase()}
+            </option>
+          ))
+        }
+      </select>
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-summary">Summary</label>
+      <input
+        id="f-summary"
+        name="summary"
+        type="text"
+        maxlength="180"
+        class={field}
+        value={values.summary}
+      />
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-role">Role</label>
+      <input
+        id="f-role"
+        name="role"
+        type="text"
+        maxlength="120"
+        class={field}
+        value={values.role}
+      />
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-timeline">Timeline</label>
+      <input
+        id="f-timeline"
+        name="timeline"
+        type="text"
+        maxlength="120"
+        class={field}
+        value={values.timeline}
+      />
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-problem">Problem</label>
+      <textarea
+        id="f-problem"
+        name="problem"
+        rows="4"
+        maxlength="5000"
+        class={`${field} resize-y`}>{values.problem}</textarea
+      >
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-body">Body (Markdown)</label>
+      <textarea
+        id="f-body"
+        name="body"
+        rows="12"
+        maxlength="50000"
+        class={`${field} resize-y font-mono`}>{values.body}</textarea
+      >
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-outcome">Outcome</label>
+      <textarea
+        id="f-outcome"
+        name="outcome"
+        rows="4"
+        maxlength="5000"
+        class={`${field} resize-y`}>{values.outcome}</textarea
+      >
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-live">Live URL</label>
+      <input
+        id="f-live"
+        name="liveUrl"
+        type="url"
+        maxlength="512"
+        class={field}
+        value={values.liveUrl}
+      />
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-repo">Repository URL</label>
+      <input
+        id="f-repo"
+        name="repoUrl"
+        type="url"
+        maxlength="512"
+        class={field}
+        value={values.repoUrl}
+      />
+    </div>
+
+    <div class="flex flex-col gap-xs">
+      <label class={label} for="f-cover">Cover image</label>
+      <select id="f-cover" name="coverImageId" class={field}>
+        <option value="">No cover</option>
+        {
+          assets.map((asset) => (
+            <option
+              value={asset.id}
+              selected={values.coverImageId === asset.id}
+            >
+              {asset.key}{" "}
+              {asset.altText.trim().length === 0 ? "(no alt text)" : ""}
+            </option>
+          ))
+        }
+      </select>
+    </div>
+
+    <fieldset class="flex flex-col gap-xs">
+      <legend class={label}>Stack</legend>
+      {
+        stackItems.length === 0 ? (
+          <p class="text-body-md text-ink-muted">No stack items yet.</p>
+        ) : (
+          <div class="flex flex-wrap gap-md">
+            {stackItems.map((item) => (
+              <label class="flex min-h-11 items-center gap-xs text-body-md">
+                <input
+                  type="checkbox"
+                  name="stackItemIds"
+                  value={item.id}
+                  checked={values.stackItemIds.includes(item.id)}
+                />
+                {item.name}
+              </label>
+            ))}
+          </div>
+        )
+      }
+    </fieldset>
+
+    <div>
+      <Button type="submit">Save changes</Button>
+    </div>
+  </form>
+</AdminLayout>
