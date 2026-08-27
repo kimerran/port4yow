@@ -4,6 +4,7 @@ import { ActionError, defineAction } from "astro:actions";
 import { z } from "astro/zod";
 import { AdminAuthError, assertAdmin, getDashboardStats } from "../lib/admin";
 import { isSameOrigin } from "../lib/origin";
+import { InvalidSetting, UnknownSetting, saveSetting } from "../lib/settings";
 import {
   DuplicateStackName,
   ReorderMismatch,
@@ -451,6 +452,58 @@ export const server = {
         return { deleted };
       } catch (cause) {
         return toActionError(cause);
+      }
+    },
+  }),
+
+  /**
+   * Saves one site setting (#31).
+   *
+   * One key per submit rather than the whole form: each field has its own length
+   * rule and its own URL rule, so a single failure would otherwise discard the
+   * valid edits alongside the invalid one.
+   *
+   * ## Why this RETURNS a refusal instead of throwing one
+   *
+   * Every other action here throws `ActionError` for a domain refusal. This one
+   * cannot: the settings screen renders four forms bound to this one action, and
+   * `Astro.getActionResult` gives a single result with **no record of which
+   * input produced it**. A thrown error would therefore appear under all four
+   * fields, and #31 asks for a *field-keyed* error.
+   *
+   * Returning `{ ok: false, key, message }` carries the key back, so the message
+   * lands beside the field it is about. A validation refusal is an expected
+   * outcome of a form rather than an exception, which is what makes this
+   * honest rather than a workaround.
+   *
+   * `key` is checked against the closed list inside `validateSetting`, so a
+   * caller cannot write a setting nothing reads.
+   */
+  saveSetting: defineAction({
+    accept: "form",
+    input: z.object({
+      key: z.string().min(1).max(64),
+      // The real cap is per-key and lives in SETTING_DEFINITIONS; this is only a
+      // ceiling so an absurd body is refused before it is inspected.
+      value: z.string().max(5000),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        await saveSetting(input.key, input.value);
+        return { ok: true as const, key: input.key, message: null };
+      } catch (cause) {
+        if (
+          cause instanceof InvalidSetting ||
+          cause instanceof UnknownSetting
+        ) {
+          return {
+            ok: false as const,
+            key: input.key,
+            message: cause.message,
+          };
+        }
+        throw cause;
       }
     },
   }),

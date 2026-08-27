@@ -1,0 +1,134 @@
+---
+import { actions } from "astro:actions";
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import Button from "../../components/Button.astro";
+import { assertAdmin } from "../../lib/admin";
+import { SETTING_DEFINITIONS, listSettings } from "../../lib/settings";
+
+/**
+ * `GET /admin/settings` — the public copy the admin can edit (SPEC §6, #31).
+ *
+ * One form per setting, each posting to the same Action with its own key. A
+ * single form for everything would discard the valid edits whenever one field
+ * failed, and every field here has a different rule.
+ */
+assertAdmin(Astro.locals);
+
+const result = Astro.getActionResult(actions.saveSetting);
+const values = await listSettings();
+
+/**
+ * The error belongs beside the field it is about.
+ *
+ * `Astro.getActionResult` returns one result for the whole action with no record
+ * of which input produced it — and this page binds four forms to one action. So
+ * `saveSetting` returns the key alongside its verdict rather than throwing,
+ * which is what lets the message land under the field it concerns instead of
+ * under all four.
+ */
+const failedKey = result?.data && !result.data.ok ? result.data.key : null;
+const savedKey = result?.data?.ok ? result.data.key : null;
+const failureMessage =
+  result?.data && !result.data.ok ? result.data.message : null;
+
+const field =
+  "min-h-11 w-full rounded border border-outline-variant bg-card-face px-md py-sm text-body-md text-ink-navy";
+const label = "font-mono text-label-sm text-ink-muted";
+---
+
+<AdminLayout title="Settings — admin" heading="Settings">
+  <p class="max-w-[66ch] text-body-md text-ink-muted">
+    {
+      /*
+        BRAND §8 lives where the copy is typed, not in a document nobody opens
+        while typing. The rejected phrases are named because a rule with
+        examples is followed and a rule without them is argued with.
+      */
+    }
+    Plain, specific, slightly dry. Precision is the personality. No “passionate about”,
+    no “crafting digital experiences”, no “let’s build something amazing”.
+  </p>
+
+  {
+    SETTING_DEFINITIONS.map((definition) => {
+      const current = values[definition.key] ?? "";
+      const errored = failedKey === definition.key;
+      const saved = savedKey === definition.key;
+
+      return (
+        <section class="flex max-w-[720px] flex-col gap-md">
+          <h2 class="font-mono text-label-sm tracking-wide text-ink-muted uppercase">
+            {definition.label}
+          </h2>
+
+          <form
+            method="POST"
+            action={actions.saveSetting}
+            class="flex flex-col gap-xs"
+          >
+            <input type="hidden" name="key" value={definition.key} />
+
+            <label class="sr-only" for={`s-${definition.key}`}>
+              {definition.label}
+            </label>
+
+            {definition.rows > 1 ? (
+              <textarea
+                id={`s-${definition.key}`}
+                name="value"
+                rows={definition.rows}
+                maxlength={definition.maxLength}
+                class:list={[field, "resize-y", errored && "border-error"]}
+                aria-describedby={`h-${definition.key}`}
+                aria-invalid={errored ? "true" : undefined}
+              >
+                {current}
+              </textarea>
+            ) : (
+              <input
+                id={`s-${definition.key}`}
+                name="value"
+                type="text"
+                maxlength={definition.maxLength}
+                value={current}
+                class:list={[field, errored && "border-error"]}
+                aria-describedby={`h-${definition.key}`}
+                aria-invalid={errored ? "true" : undefined}
+              />
+            )}
+
+            <p id={`h-${definition.key}`} class={label}>
+              {definition.help} Up to {definition.maxLength} characters.
+            </p>
+
+            {errored && (
+              <p
+                class="text-[14px] text-error"
+                role="status"
+                aria-live="polite"
+              >
+                {failureMessage}
+              </p>
+            )}
+
+            {saved && (
+              <p
+                class="text-[14px] text-ink-muted"
+                role="status"
+                aria-live="polite"
+              >
+                Saved.
+              </p>
+            )}
+
+            <div>
+              <Button type="submit" variant="secondary">
+                Save {definition.label.toLowerCase()}
+              </Button>
+            </div>
+          </form>
+        </section>
+      );
+    })
+  }
+</AdminLayout>
