@@ -125,3 +125,74 @@ Nothing blocks this issue. **Sprint 5 is complete once this merges.**
 ## Content TODOs
 
 None.
+
+---
+
+## Review round 2 — finding addressed
+
+### Login and logout allowed a missing `Origin`; `/api/contact` did not (fixed)
+
+The reviewer is right, and the shape of the bug matters more than the line:
+
+```ts
+if (origin !== null && origin !== expected) return 403; // login, logout
+```
+
+A request with **no** `Origin` passed that. #22 had made the opposite call on the
+same threat and written down why — a browser always sends `Origin` on a
+cross-origin POST, so its absence means a non-browser client, and treating "no
+evidence" as "must be fine" is failing open. The repo had two answers to one
+question, and the laxer one was guarding the route that **issues sessions**.
+
+Fixed at the class rather than per-file: `src/lib/origin.ts` exports one
+`isSameOrigin(request)`, and `/api/contact`, `/admin/login` and `/admin/logout`
+all call it. Copying the corrected condition into two more files would have left
+the same drift available next time.
+
+**Not exploitable today**, as the review says — Astro's `checkOrigin` refuses a
+missing-`Origin` **form** POST before the route runs. But it does not cover JSON,
+and it is a config line someone could change, which is exactly why SPEC §14.4
+asks for the explicit per-route check.
+
+### Verified
+
+| Request                                   | Result                                               | Refused by                                    |
+| ----------------------------------------- | ---------------------------------------------------- | --------------------------------------------- |
+| `POST /api/contact` JSON, **no Origin**   | **403** `{"ok":false,"error":"Forbidden."}`          | our check — `checkOrigin` does not cover JSON |
+| `POST /api/contact` JSON, matching Origin | 200 `{"ok":true}`                                    | —                                             |
+| `POST /api/contact` JSON, evil Origin     | 403                                                  | our check                                     |
+| `POST /admin/login` form, no Origin       | 403 `Cross-site POST form submissions are forbidden` | `checkOrigin`, first                          |
+| `POST /admin/logout`, no Origin           | 403                                                  | —                                             |
+
+The JSON row is the one that proves the fix: it is the path the framework
+backstop never sees.
+
+Mutation — restoring the exact shape login and logout had:
+
+```ts
+if (origin === null) return true; // absent Origin accepted
+```
+
+fails **3** tests. (A first attempt at this mutation failed **0**, because it
+still fell through to the `Referer` check and so was not the bug at all — worth
+recording, since a mutation that does not reproduce the defect proves nothing.)
+
+### On `failedLogins` after a lockout expires — a decision, not an oversight
+
+The reviewer's observation is accurate: once a lock expires, `failedLogins` is
+still 5, so a single wrong password re-locks immediately, and only a **successful**
+login resets the counter.
+
+That is SPEC §8 read literally — it says reset on success, not on expiry — and it
+is the safer reading: after a first lockout an attacker gets one guess per 15
+minutes rather than five. The cost is that "5 consecutive failures" stops
+describing the steady state, and an admin who typos once after a lockout waits
+another 15 minutes. Nobody is locked out permanently, because the correct
+password always works and always clears the counter.
+
+Recording it here so it reads as chosen rather than missed.
+
+### Gate
+
+`typecheck` 0 errors / 0 warnings / 0 hints · `lint` PASS · `test` **345** passed,
+35 skipped · `build` PASS. Integration **35/35**.

@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { SESSION_COOKIE, invalidateSession } from "../../lib/auth";
-import { env } from "../../lib/env";
 import { logger } from "../../lib/logger";
+import { isSameOrigin } from "../../lib/origin";
 
 export const prerender = false;
 
@@ -16,10 +16,9 @@ export const prerender = false;
  * the token — the reason to log out in the first place — is still signed in.
  */
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
-  const origin = request.headers.get("origin");
-  const expected = new URL(env.PUBLIC_SITE_URL).origin;
-
-  if (origin !== null && origin !== expected) {
+  // Shared with login and /api/contact — a missing Origin is refused, not
+  // allowed, so the three state-changing routes cannot drift apart.
+  if (!isSameOrigin(request)) {
     logger.warn("logout rejected: cross-origin");
     return new Response(null, { status: 403 });
   }

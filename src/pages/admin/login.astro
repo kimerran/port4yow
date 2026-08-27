@@ -6,9 +6,9 @@ import {
   SESSION_COOKIE_OPTIONS,
   rotateSession,
 } from "../../lib/auth";
-import { env } from "../../lib/env";
 import { GENERIC_LOGIN_ERROR, attemptLogin } from "../../lib/login";
 import { logger, newCorrelationId } from "../../lib/logger";
+import { isSameOrigin } from "../../lib/origin";
 import { clientIpFrom, consume, hashIp } from "../../lib/ratelimit";
 import { safeNextPath } from "../../lib/redirect";
 import BaseLayout from "../../layouts/BaseLayout.astro";
@@ -48,12 +48,15 @@ let submittedUsername = "";
 let redirectTo: string | null = null;
 
 if (Astro.request.method === "POST") {
-  // 1 · Origin. SPEC §14.4 wants an explicit check on every state-changing
-  // route, not just the framework backstop — and this one hands out sessions.
-  const origin = Astro.request.headers.get("origin");
-  const expected = new URL(env.PUBLIC_SITE_URL).origin;
-
-  if (origin !== null && origin !== expected) {
+  /**
+   * 1 · Origin. SPEC §14.4 wants an explicit check on every state-changing
+   * route, not just the framework backstop — and this one hands out sessions.
+   *
+   * Shared with /api/contact and logout. This route previously allowed a
+   * MISSING `Origin` while the contact form refused it: two answers to one
+   * threat, with the laxer one guarding the session issuer.
+   */
+  if (!isSameOrigin(Astro.request)) {
     logger.warn("login rejected: cross-origin", {
       correlation_id: correlationId,
     });
