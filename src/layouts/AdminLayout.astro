@@ -1,0 +1,132 @@
+---
+import { Font } from "astro:assets";
+import "../styles/global.css";
+
+/**
+ * The admin shell (SPEC §6, BRAND §2–4, #26).
+ *
+ * Same tokens as the public site and no second design language — BRAND §2 is
+ * explicit that there is one palette and one type scale, and an admin that grew
+ * its own would drift from the site it edits. No dark mode anywhere.
+ *
+ * Deliberately NOT BaseLayout: that carries the facet lattice, the scroll rail
+ * and the public navigation, none of which belong behind a login, and its
+ * client script would be the only JavaScript on an admin page. Sharing the
+ * layout would mean adding conditionals to a public file for the benefit of a
+ * private one.
+ *
+ * `noindex` and `no-store` come from middleware (#24) for every `/admin/*`
+ * response, so they are not repeated here — one place to change them, and it
+ * already covers the redirect and the 401 too.
+ */
+interface Props {
+  title: string;
+  /** Rendered as the h1. Sentence case, a noun phrase (BRAND §8). */
+  heading: string;
+}
+
+const { title, heading } = Astro.props;
+
+/**
+ * Middleware guarantees this is non-null for /admin/* — it redirects otherwise —
+ * but the layout does not assume it. A null here renders a shell without a name
+ * rather than throwing, and the pages still run their own `requireAdmin`.
+ */
+const user = Astro.locals.user;
+
+const NAV = [
+  { href: "/admin", label: "Dashboard" },
+  { href: "/admin/projects", label: "Projects" },
+  { href: "/admin/stack", label: "Stack" },
+  { href: "/admin/messages", label: "Messages" },
+  { href: "/admin/settings", label: "Settings" },
+];
+
+const { pathname } = Astro.url;
+const isCurrent = (href: string): boolean =>
+  href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    {
+      /* Same three faces as the public site; none preloaded — no LCP race here. */
+    }
+    <Font cssVariable="--font-bodoni-moda" />
+    <Font cssVariable="--font-karla" />
+    <Font cssVariable="--font-plex-mono" />
+
+    <title>{title}</title>
+    {/* Belt and braces with the header middleware already sets. */}
+    <meta name="robots" content="noindex, nofollow" />
+  </head>
+
+  <body class="min-h-screen bg-cool-stock font-body text-body-md text-ink-navy">
+    {/* BRAND §9 — first tab stop on every page. */}
+    <a
+      href="#main"
+      class="sr-only rounded-lg bg-card-face px-md py-sm text-ink-navy focus:not-sr-only focus:absolute focus:top-sm focus:left-sm focus:z-50"
+      >Skip to content</a
+    >
+
+    <header class="border-b border-deep-teal/10 bg-card-face">
+      <div
+        class="mx-auto flex w-full max-w-[1280px] flex-wrap items-center gap-md px-md py-md md:px-lg"
+      >
+        <span class="font-display text-headline-md">Admin</span>
+
+        <nav aria-label="Admin" class="flex flex-wrap items-center gap-xs">
+          {
+            NAV.map((item) => (
+              <a
+                href={item.href}
+                aria-current={isCurrent(item.href) ? "page" : undefined}
+                class:list={[
+                  "flex min-h-11 items-center rounded px-sm font-mono text-label-sm",
+                  isCurrent(item.href)
+                    ? "bg-deep-teal/10 text-deep-teal"
+                    : "text-ink-muted",
+                ]}
+              >
+                {item.label}
+              </a>
+            ))
+          }
+        </nav>
+
+        <div class="ml-auto flex items-center gap-md">
+          {
+            user && (
+              <span class="font-mono text-label-sm text-ink-muted">
+                {user.displayName}
+              </span>
+            )
+          }
+          {
+            /* A form, not a link: #25 makes logout POST-only so an <img src>
+               anywhere on the internet cannot sign the admin out. */
+          }
+          <form method="POST" action="/admin/logout">
+            <button
+              type="submit"
+              class="flex min-h-11 items-center rounded px-sm font-mono text-label-sm text-ink-navy underline underline-offset-4"
+            >
+              Sign out
+            </button>
+          </form>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="mx-auto w-full max-w-[1280px] px-md py-xl md:px-lg">
+      <h1 class="font-display text-headline-lg">{heading}</h1>
+      <div class="mt-lg flex flex-col gap-xl">
+        <slot />
+      </div>
+    </main>
+  </body>
+</html>
