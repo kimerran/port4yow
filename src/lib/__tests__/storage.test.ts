@@ -14,8 +14,7 @@ Object.assign(process.env, {
   CONTACT_TO_EMAIL: "a@b.com",
 });
 
-const { isSafeKey, PRESIGN_TTL_SECONDS, REDIRECT_CACHE_SECONDS } =
-  await import("../storage");
+const { isSafeKey, MEDIA_CACHE_SECONDS } = await import("../storage");
 
 /**
  * The route requires a matching MediaAsset row, so this is defence in depth
@@ -56,18 +55,28 @@ describe("isSafeKey — rejects traversal and absolute paths", () => {
   });
 });
 
-describe("redirect cache must not outlive the signature", () => {
+describe("media cache lifetime", () => {
   /**
-   * A cached 302 replays a stale Location, and the presigned URL behind it 403s
-   * once its signature expires. If the redirect is cached LONGER than the
-   * signature lives, returning visitors get broken images — and it is invisible
-   * in a single session, because the first few minutes work.
+   * This replaced an invariant rather than relaxing one.
+   *
+   * Under the presigned-redirect design the cache lifetime HAD to stay strictly
+   * below the signature TTL: a cached 302 replays a stale `Location`, and the
+   * presigned URL behind it 403s once the signature expires, so returning
+   * visitors got broken images invisibly — the first few minutes worked.
+   *
+   * The route now streams the bytes through our own origin, so there is no
+   * signature left to outlive and the coupling is gone. What makes a long
+   * lifetime safe instead is that a key names one immutable object: SPEC §9 keys
+   * are `projects/{projectId}/{ulid}-{width}.{ext}`, and new bytes get a new
+   * ULID and therefore a new URL.
    */
-  it("caches the redirect for strictly less than the signature TTL", () => {
-    expect(REDIRECT_CACHE_SECONDS).toBeLessThan(PRESIGN_TTL_SECONDS);
+  it("caches for a year, which immutable keys make safe", () => {
+    expect(MEDIA_CACHE_SECONDS).toBe(31_536_000);
   });
 
-  it("still caches for a useful interval", () => {
-    expect(REDIRECT_CACHE_SECONDS).toBeGreaterThan(0);
+  it("does not export a presign TTL to couple against any more", async () => {
+    const storage = await import("../storage");
+    expect("PRESIGN_TTL_SECONDS" in storage).toBe(false);
+    expect("REDIRECT_CACHE_SECONDS" in storage).toBe(false);
   });
 });
