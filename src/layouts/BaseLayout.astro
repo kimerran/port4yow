@@ -72,6 +72,16 @@ const ogImageUrl = ogImage
     <SiteNav />
 
     {
+      /* One of only two client scripts on public pages (SPEC §15). External
+        module, not inline: Astro's CSP carries only its own runtime hashes, so a
+        page-level inline script is blocked. `script-src 'self'` allows this. */
+    }
+    <script>
+      import { initScrollRail } from "../scripts/scroll-rail.ts";
+      initScrollRail();
+    </script>
+
+    {
       /* Rail is 80px on desktop; the shell clears it rather than overlapping. */
     }
     <div class="md:pl-20">
