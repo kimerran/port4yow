@@ -3,8 +3,12 @@ import { ActionError, defineAction } from "astro:actions";
 // Astro 8. Importing from "astro/zod" is the supported path.
 import { z } from "astro/zod";
 import { AdminAuthError, assertAdmin, getDashboardStats } from "../lib/admin";
+import {
+  MESSAGE_STATUSES,
+  MessageNotFound,
+  setMessageStatus,
+} from "../lib/messages";
 import { isSameOrigin } from "../lib/origin";
-import { InvalidSetting, UnknownSetting, saveSetting } from "../lib/settings";
 import {
   DuplicateStackName,
   ReorderMismatch,
@@ -17,6 +21,7 @@ import {
 } from "../lib/stack";
 import { SUIT_ENUM_VALUES } from "../lib/suits";
 import { consume } from "../lib/ratelimit";
+import { InvalidSetting, UnknownSetting, saveSetting } from "../lib/settings";
 import { db } from "../lib/db";
 import {
   AssetInUse,
@@ -97,7 +102,10 @@ function toActionError(cause: unknown): never {
     cause instanceof StackItemNotFound ||
     cause instanceof ReorderMismatch ||
     cause instanceof UploadRejected ||
-    cause instanceof AssetInUse
+    cause instanceof AssetInUse ||
+    cause instanceof MessageNotFound ||
+    cause instanceof InvalidSetting ||
+    cause instanceof UnknownSetting
   ) {
     throw new ActionError({ code: "BAD_REQUEST", message: cause.message });
   }
@@ -450,6 +458,28 @@ export const server = {
       try {
         const deleted = await deleteAssetGroup(input.keyStem);
         return { deleted };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  /**
+   * Triage a contact message (#30). The only mutation the inbox performs —
+   * messages are never edited or deleted from here, because a stored
+   * submission is a record of something a person sent.
+   */
+  setMessageStatus: defineAction({
+    accept: "form",
+    input: z.object({
+      id: z.string().min(1),
+      status: z.enum(MESSAGE_STATUSES),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        await setMessageStatus(input.id, input.status);
+        return { ok: true };
       } catch (cause) {
         return toActionError(cause);
       }
