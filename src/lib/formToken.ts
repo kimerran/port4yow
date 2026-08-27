@@ -21,8 +21,15 @@ import { env } from "./env";
  */
 export const MIN_AGE_MS = 3_000;
 
-/** A form left open for longer than this is stale; re-render to get a new one. */
-export const MAX_AGE_MS = 60 * 60 * 1000;
+/**
+ * A form left open longer than this is stale; re-render to get a new one.
+ *
+ * SPEC §7: "Submissions under 3 seconds or over 30 minutes old are rejected",
+ * and #22 step 4 repeats the same pair. This was 60 minutes on the first pass —
+ * a number I chose rather than read, which is exactly what AGENT §1.1 warns
+ * about for versions and applies just as well to a spec constant.
+ */
+export const MAX_AGE_MS = 30 * 60 * 1000;
 
 const sign = (payload: string): string =>
   createHmac("sha256", env.FORM_SECRET).update(payload).digest("hex");

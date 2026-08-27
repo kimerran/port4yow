@@ -20,6 +20,22 @@ const { createFormToken, verifyFormToken, MIN_AGE_MS, MAX_AGE_MS } =
 const T0 = 1_800_000_000_000;
 const afterHuman = T0 + MIN_AGE_MS + 1;
 
+/**
+ * SPEC §7 states the window in words: "Submissions under 3 seconds or over 30
+ * minutes old are rejected." #22 step 4 repeats it. Pinning both numbers here
+ * means a future change has to argue with a test rather than drift quietly —
+ * the first version of this file used 60 minutes, which no test noticed.
+ */
+describe("the window matches SPEC §7", () => {
+  it("rejects under 3 seconds", () => {
+    expect(MIN_AGE_MS).toBe(3_000);
+  });
+
+  it("rejects over 30 minutes", () => {
+    expect(MAX_AGE_MS).toBe(30 * 60 * 1000);
+  });
+});
+
 describe("createFormToken", () => {
   it("is <issuedAt>.<hmac>", () => {
     expect(createFormToken(T0)).toMatch(/^1800000000000\.[0-9a-f]{64}$/);
