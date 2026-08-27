@@ -225,7 +225,7 @@ export default defineConfig(
      * every other file in the codebase stays guarded. This is the documented
      * exception #33 anticipated, not a blanket opt-out.
      */
-    files: ["src/components/JsonLd.astro"],
+    files: ["src/components/JsonLd.astro", "src/components/MarkdownBody.astro"],
     rules: { "astro/no-set-html-directive": "off" },
   },
 
