@@ -14,7 +14,8 @@ Object.assign(process.env, {
   CONTACT_TO_EMAIL: "a@b.com",
 });
 
-const { isSafeKey } = await import("../storage");
+const { isSafeKey, PRESIGN_TTL_SECONDS, REDIRECT_CACHE_SECONDS } =
+  await import("../storage");
 
 /**
  * The route requires a matching MediaAsset row, so this is defence in depth
@@ -52,5 +53,21 @@ describe("isSafeKey — rejects traversal and absolute paths", () => {
     ["too long", "a".repeat(513)],
   ])("rejects %s", (_label, key) => {
     expect(isSafeKey(key)).toBe(false);
+  });
+});
+
+describe("redirect cache must not outlive the signature", () => {
+  /**
+   * A cached 302 replays a stale Location, and the presigned URL behind it 403s
+   * once its signature expires. If the redirect is cached LONGER than the
+   * signature lives, returning visitors get broken images — and it is invisible
+   * in a single session, because the first few minutes work.
+   */
+  it("caches the redirect for strictly less than the signature TTL", () => {
+    expect(REDIRECT_CACHE_SECONDS).toBeLessThan(PRESIGN_TTL_SECONDS);
+  });
+
+  it("still caches for a useful interval", () => {
+    expect(REDIRECT_CACHE_SECONDS).toBeGreaterThan(0);
   });
 });

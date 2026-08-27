@@ -1,6 +1,10 @@
 import type { APIRoute } from "astro";
 import { db } from "../../../lib/db";
-import { isSafeKey, presignGet } from "../../../lib/storage";
+import {
+  isSafeKey,
+  presignGet,
+  REDIRECT_CACHE_SECONDS,
+} from "../../../lib/storage";
 
 export const prerender = false;
 
@@ -37,9 +41,20 @@ export const GET: APIRoute = async ({ params }) => {
     status: 302,
     headers: {
       Location: url,
-      // SPEC §9 — long cache on the REDIRECT itself. The presigned target
-      // expires in 5 minutes; the 302 pointing at it is what browsers reuse.
-      "Cache-Control": "public, max-age=3600",
+      /**
+       * Derived from the signature TTL, never a standalone number.
+       *
+       * SPEC §9 asks for "a 5-minute TTL AND a long Cache-Control on the
+       * redirect" — the two cannot both hold. A browser caches the 302 and
+       * replays the stale `Location`; the presigned URL behind it 403s once the
+       * signature expires. With max-age=3600 that meant a returning visitor got
+       * broken images from 5 minutes to 1 hour after first load — invisible in a
+       * single session, because the first five minutes work.
+       *
+       * Capping below the signature keeps the cached redirect strictly younger
+       * than the URL it points at. Deriving it means the two cannot drift.
+       */
+      "Cache-Control": `public, max-age=${REDIRECT_CACHE_SECONDS}`,
     },
   });
 };

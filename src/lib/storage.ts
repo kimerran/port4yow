@@ -27,6 +27,18 @@ const client = new S3Client({
 /** SPEC §9 — 5-minute TTL on the presigned URL. */
 export const PRESIGN_TTL_SECONDS = 300;
 
+/**
+ * How long a browser may cache the 302 itself.
+ *
+ * MUST stay below PRESIGN_TTL_SECONDS. A cached redirect replays a stale
+ * `Location`, and the presigned URL behind it 403s once its signature expires —
+ * so a redirect that outlives its own signature serves broken images to
+ * returning visitors, invisibly, until the redirect cache expires too.
+ *
+ * Derived rather than written twice; the invariant is asserted in the tests.
+ */
+export const REDIRECT_CACHE_SECONDS = PRESIGN_TTL_SECONDS - 60;
+
 export function presignGet(
   key: string,
   bucket = env.S3_BUCKET,

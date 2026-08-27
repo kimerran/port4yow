@@ -25,7 +25,55 @@ be worse than none:
 | traversal guard removed        | **4**         |
 | key pattern loosened to `/.*/` | **5**         |
 
-## SPEC §9 contains a contradiction worth resolving
+## Review follow-up — the redirect outlived its own signature
+
+`Cache-Control: public, max-age=3600` on a 302 whose `Location` expires in **300s**. A browser
+caches the redirect and replays the stale `Location`; the presigned URL behind it 403s once the
+signature dies. Net effect: **between 5 minutes and 1 hour after first load, a returning
+visitor gets 403s on every image** — invisible in a single session, because the first five
+minutes work and the bytes are still warm.
+
+Fixed by deriving the redirect cache from the signature TTL rather than writing a second
+number:
+
+```ts
+export const REDIRECT_CACHE_SECONDS = PRESIGN_TTL_SECONDS - 60;
+```
+
+```text
+cache-control: public, max-age=240
+signature:     X-Amz-Expires=300
+```
+
+**The invariant is a test, not a comment** — `REDIRECT_CACHE_SECONDS < PRESIGN_TTL_SECONDS`.
+Raising it above the TTL fails that test, so the two cannot drift apart later.
+
+## Correction — my mutation table was wrong
+
+The PR claimed the traversal guard was worth **4** failing tests. It is worth **1**.
+
+The 4 came from a **broken mutation**: `if (key.includes("..") || …)` wraps onto a second line
+under Prettier, and deleting only the first line left an orphaned `return false;` — turning
+`isSafeKey` into "reject everything". That fails 4 tests for a reason unrelated to the guard.
+
+Corrected, deleting complete statements:
+
+| Guard removed                    | Tests failing |
+| -------------------------------- | ------------- |
+| `..` / leading `/` / backslash   | **1**         |
+| NUL / double-slash               | **1**         |
+| length bound                     | **1**         |
+| `KEY_PATTERN` loosened to `/.*/` | **5**         |
+
+`KEY_PATTERN` carries most of the weight — `^[A-Za-z0-9]` already rejects `../…` and
+`/etc/passwd` on the first character. The explicit guard adds exactly one case the pattern
+misses, `projects/../../etc/passwd`, which is real and worth keeping as a cheap early reject.
+
+**A mutation that changes the code differently than intended produces a meaningless number.**
+Delete whole statements, and sanity-check that the survivor count moved for the reason you
+think.
+
+## SPEC §9 contains TWO contradictions in one bullet
 
 Two sentences, one line apart:
 
