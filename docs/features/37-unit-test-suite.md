@@ -42,8 +42,44 @@ before fixing:
 | `localhost:4321`     | **accepted**                          |
 | `https://mh.neri.ph` | refused                               |
 
-So a configuration typo turned the CSRF control on every state-changing route
-into a no-op — silently, with the site otherwise working.
+### How far that actually went — narrowed after review
+
+The mechanism above is exact. The **impact** claim in the first version of this
+handoff was not: it said the typo turned the CSRF control on every
+state-changing route into a no-op. Measured against a build with
+`PUBLIC_SITE_URL=localhost:4321`, that is too strong — and the real picture is
+more interesting than either the original claim or the review's correction:
+
+| request                           | `Origin`               | result on the misconfigured build                                                    |
+| --------------------------------- | ---------------------- | ------------------------------------------------------------------------------------ |
+| `POST /api/contact`, form-encoded | `null`                 | **403** — Astro's `Cross-site POST form submissions are forbidden`                   |
+| `POST /api/contact`, **JSON**     | `null`                 | **200 `{"ok":true}`** — accepted                                                     |
+| `POST /api/contact`, JSON         | `https://evil.example` | 403 `{"ok":false,"error":"Forbidden."}`                                              |
+| `POST /_actions/getStats`, JSON   | `null`                 | **401**, not 403 — the origin gate _passed_ and it fell through to the session check |
+| `POST /_actions/getStats`, JSON   | `https://evil.example` | 403 Forbidden                                                                        |
+
+So `isSameOrigin` really did fail open on `Origin: null` — demonstrably, on both
+a public route and an admin action. What stopped that being an exploitable CSRF
+hole is **two controls that are not this one**:
+
+- **Form POSTs never reached it.** `security.checkOrigin` refuses them first,
+  which is exactly the defence in depth SPEC §14.4 asks for by requiring both.
+- **JSON POSTs are not reachable from a browser cross-site.** A cross-origin
+  `fetch` with `Content-Type: application/json` triggers a CORS preflight, and
+  `OPTIONS /api/contact` answers **404 with no `Access-Control-Allow-Origin`**,
+  so the browser never sends the real request. A non-browser client can send it —
+  but a request with no victim's browser is not CSRF.
+- Admin actions additionally need the session cookie, and `SameSite=Lax`
+  withholds it from cross-site POSTs.
+
+**The honest statement:** the typo disabled the application-level origin check,
+leaving `checkOrigin` as the only remaining control on form POSTs and CORS as the
+only thing in front of the JSON ones. A lost defence-in-depth layer, not an open
+door. Still worth fixing at the boundary, still worth the test — but not the
+severity originally claimed.
+
+Same shape as #87's "total": the code was right and the sentence outran the
+measurement. Twice now, which is worth noticing rather than filing away.
 
 Fixed at the boundary: `PUBLIC_SITE_URL` and `S3_ENDPOINT` now require an
 `http`/`https` scheme. `env.ts` is the one place that is supposed to make a bad
