@@ -87,6 +87,12 @@ function applySecurityHeaders(response: Response, pathname: string): Response {
    *
    * Only when nothing has been set: a route that has thought about its own
    * caching wins, which is why this reads before it writes.
+   *
+   * **Known limit**, same cause as the streaming case above: this keys on the
+   * status, and a mid-stream throw produces a truncated error document under a
+   * **200**. That response is heuristically cacheable and this rule cannot see
+   * it. `middleware.test.ts` pins the boundary — a 200 that sets no policy is
+   * deliberately left alone, because inventing one here would override SPEC §5.
    */
   if (response.status >= 400 && !response.headers.has("Cache-Control")) {
     response.headers.set("Cache-Control", "no-store");
@@ -203,6 +209,27 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
    * The stack also went to Astro's own console error path rather than through
    * `logger`, so it skipped redaction and carried no correlation id — SPEC
    * §14.11 wants the opposite of both.
+   *
+   * ## The bound on this, stated exactly
+   *
+   * This covers **anything that throws before the response resolves** — not
+   * every 500. Streaming is on (Astro's default), so a component that throws
+   * after the first chunk has flushed is past this `try`: `next()` has already
+   * returned a **200** and the headers are already on the wire. Measured
+   * against a built server, the same build, the difference being only *when*
+   * the throw happens:
+   *
+   * | throw in | status | Cache-Control | body | logged |
+   * | --- | --- | --- | --- | --- |
+   * | frontmatter | 500 | `no-store` | generic + id | yes |
+   * | a component, 30 ms in | **200** | **none** | truncated HTML ending `Internal server error` | **no** |
+   *
+   * The late case is the cacheable error page that the `>= 400` rule below
+   * exists to prevent, arriving with a status that rule cannot see. It is not
+   * fixable here — once the first chunk is out, the headers are gone — and the
+   * fixes are upstream: fetch in frontmatter so throws land before the response
+   * resolves, or turn streaming off and pay the TTFB. That is a bigger decision
+   * than a header sweep, so it is recorded rather than made.
    */
   let response: Response;
   try {

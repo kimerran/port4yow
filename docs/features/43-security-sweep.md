@@ -56,7 +56,11 @@ opposite of what SPEC §14.11 asks for:
     ...
 ```
 
-Middleware is now total. After:
+Middleware now catches it. After — **six** security headers, not seven: CSP is
+absent because `security.csp` decorates rendered documents and a JSON response
+never gets one. `nosniff` plus `application/json` is the control that matters
+there, and `middleware.test.ts` pins exactly these six, which is the correct set
+for what middleware owns.
 
 ```
 HTTP/1.1 500 Internal Server Error
@@ -80,6 +84,31 @@ ERROR unhandled error {"correlationId":"122581c2-…","path":"/_actions/getStats
 
 Raw stack traces in the log after the fix: **0**.
 
+### The bound on that, stated exactly
+
+This covers **anything that throws before the response resolves** — not every 500. Not "total": streaming is on (Astro's default), so a component that throws
+after the first chunk has flushed is past the `try`, because `next()` has
+already returned a 200 and the headers are already on the wire.
+
+Measured against the same build, the difference being only _when_ the throw
+happens:
+
+| throw in              | status  | `Cache-Control` | body                                                                   | logged |
+| --------------------- | ------- | --------------- | ---------------------------------------------------------------------- | ------ |
+| frontmatter           | **500** | `no-store`      | generic + correlation id (110 bytes)                                   | yes    |
+| a component, 30 ms in | **200** | **none**        | 9415 bytes, no `</body>`, no `</html>`, ending `Internal server error` | **no** |
+
+The late case is exactly the cacheable error page that Finding 2 exists to
+prevent, arriving with a status the `>= 400` rule cannot see. A shared cache is
+free to hold a truncated error document and serve it to everyone.
+
+It is not fixable where the other two were — once the first chunk is out, the
+headers are gone, so middleware can neither change the status nor add
+`no-store`. The fixes are upstream: fetch in frontmatter so throws land before
+the response resolves, or turn streaming off and pay the TTFB (SPEC §15 cares
+about that). Both are bigger decisions than a header sweep, so this is recorded
+rather than made — see **Next**.
+
 ## Finding 2 — 404s were heuristically cacheable
 
 Every 404 came back with no `Cache-Control` at all, which makes it heuristically
@@ -102,6 +131,13 @@ not middleware's.
 | `/`                  | `public, max-age=0, s-maxage=300, stale-while-revalidate=86400` | unchanged  |
 | `/sitemap.xml`       | `public, max-age=0, s-maxage=300`                               | unchanged  |
 | `/healthz`           | `no-store`                                                      | unchanged  |
+
+**Known limit, same cause as the streaming case above.** This rule keys on the
+status, and a mid-stream throw produces a truncated error document under a
+**200** — heuristically cacheable, and invisible to a `>= 400` test. It is the
+one shape of cacheable error page this finding does not close.
+`middleware.test.ts` pins the boundary deliberately: a 200 that sets no policy
+is left alone, because inventing one here would override SPEC §5.
 
 ## The sweep itself
 
@@ -191,6 +227,17 @@ built client modules or stylesheet either. This is not a hole (a hash permits on
 exact script Astro generated; it cannot admit attacker content) but the
 acceptance box says "accounted for", so: 5 and 1 are not.
 
+### One correction from the review
+
+The reviewer's own curl-level CSRF probes hit the confound this handoff already
+documents — `name=a&message=hello` fails `min(2)`/`min(20)` and returns 400
+before anything else runs — and they said so rather than reporting the numbers.
+Worth recording that the trap catches everyone who reaches for curl here, which
+is the argument for the browser-driven table being the sound measurement. The
+one result they confirmed independently and consistently, on all three
+non-Action entry points: **absent `Origin` → 403**, with Astro's own
+`Cross-site POST form submissions are forbidden`.
+
 ## Blocked
 
 Nothing.
@@ -214,6 +261,13 @@ allow'."_ The response body is clean — no stack, no SQL — so it is not a lea
 it is a wrong status and a slice-level inconsistency. It belongs to #27's lane
 (a new exported error class, the mapping, and tests in the projects slice), not
 to a header sweep, so it is reported rather than fixed.
+
+**Streaming and error responses.** The limit above is worth its own issue: with
+streaming on, any throw after the first chunk yields a truncated document under
+a 200 with no `Cache-Control`, and nothing reaches `logger`. The two candidate
+fixes — move data fetching into frontmatter so throws land before the response
+resolves, or disable streaming — trade against SPEC §15's TTFB budget, which is
+a judgement for a human rather than a sweep.
 
 Also still open, unrelated to this change:
 
