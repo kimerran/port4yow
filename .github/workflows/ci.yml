@@ -187,6 +187,82 @@ jobs:
 
   # Separate job: a secret in the history must fail the build even if the
   # code checks pass, and it should be legible as its own red X (SPEC §14.8).
+  # #39 — the Playwright suite against a real browser and a real build.
+  #
+  # Its own job, alongside `integration`, for the same reasons: a browser
+  # failure should read as a browser failure, and the two run in parallel. The
+  # service stack is identical, so the two jobs cannot drift apart.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Chromium only. The suite asserts computed styles, focus rings and axe
+      # results — none of which differ usefully across engines — and pulling
+      # three browsers triples the slowest step in CI for no extra signal.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Start Postgres, MinIO and Mailpit
+        run: docker compose up -d --wait postgres minio mailpit
+
+      - name: Create the media bucket
+        run: docker compose up --exit-code-from createbucket createbucket
+
+      - name: Generate per-run secrets
+        run: |
+          {
+            echo "SESSION_SECRET=$(openssl rand -base64 48)"
+            echo "FORM_SECRET=$(openssl rand -base64 48)"
+            echo "IP_HASH_SALT=$(openssl rand -base64 48)"
+          } >> "$GITHUB_ENV"
+
+      - name: Apply migrations
+        run: pnpm exec prisma migrate deploy
+
+      # The config's `webServer` runs `pnpm build` itself, so a stale `dist/`
+      # cannot make a broken change pass.
+      - name: End-to-end tests
+        run: pnpm test:e2e
+
+      # Traces and screenshots are kept only for failures (`retain-on-failure`),
+      # so this uploads nothing on a green run.
+      - name: Upload the report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+    env:
+      DATABASE_URL: postgresql://portfolio:portfolio@localhost:5432/portfolio?schema=public
+      PUBLIC_SITE_URL: http://localhost:4321
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: portfolio-media
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+      S3_FORCE_PATH_STYLE: "true"
+      CONTACT_TO_EMAIL: inbox@mh.neri.ph
+      SMTP_URL: smtp://localhost:1025
+      RESEND_ENABLED: "false"
+
+  # Separate job: a secret in the history must fail the build even if the
+  # code checks pass, and it should be legible as its own red X (SPEC §14.8).
   gitleaks:
     runs-on: ubuntu-latest
     timeout-minutes: 10

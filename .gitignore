@@ -42,3 +42,8 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# #39 — generated e2e credentials; never committed (AGENT §5)
+.playwright/
+test-results/
+playwright-report/

@@ -117,10 +117,24 @@ function toActionError(cause: unknown): never {
  *
  * `z.url()` rather than the deprecated `z.string().url()` — zod 4 moved it to a
  * top-level constructor and warns on the old form.
+ *
+ * ## `z.null()` is load-bearing, and #39 is how we found out
+ *
+ * Astro does not hand a blank optional form field to the schema as `""`. Its
+ * form parser sees a field that has a default and delivers **`null`**, so
+ * `liveUrl`, `repoUrl` and `coverImageId` all failed validation the moment
+ * anyone submitted the new-project form without filling in the two URL boxes —
+ * which is the ordinary case, not an edge one. Creating a project through the
+ * admin was broken.
+ *
+ * It survived because every existing test calls the action handler with a
+ * constructed object, where `""` is what the caller writes. Only a real browser
+ * posting real `FormData` produces the value the framework actually sends. That
+ * gap is the reason #39 exists.
  */
 const optionalUrl = z
-  .union([z.literal(""), z.url().max(512)])
-  .transform((value) => (value === "" ? null : value));
+  .union([z.literal(""), z.null(), z.url().max(512)])
+  .transform((value) => (value === "" || value === null ? null : value));
 
 /**
  * The writable project fields. `slug` is handled separately — see `resolveSlug`.
@@ -142,9 +156,10 @@ const ProjectFields = z.object({
   outcome: z.string().max(5000),
   liveUrl: optionalUrl.default(""),
   repoUrl: optionalUrl.default(""),
+  // Same as `optionalUrl`: "No cover" reaches the action as `null`, not `""`.
   coverImageId: z
-    .union([z.literal(""), z.string().min(1)])
-    .transform((value) => (value === "" ? null : value))
+    .union([z.literal(""), z.null(), z.string().min(1)])
+    .transform((value) => (value === "" || value === null ? null : value))
     .default(""),
   stackItemIds: z.array(z.string().min(1)).max(40).default([]),
 });
