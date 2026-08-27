@@ -31,6 +31,29 @@ const secret = (name: string) =>
 const optional = <T extends z.ZodType>(schema: T) =>
   z.preprocess((v) => (v === "" ? undefined : v), schema.optional());
 
+/**
+ * A URL that is actually addressable over HTTP — scheme required.
+ *
+ * `z.url()` alone is not enough, and the gap is not academic. The WHATWG parser
+ * reads `localhost:4321` as **scheme `localhost:`, path `4321`**, so a bare
+ * `PUBLIC_SITE_URL=localhost:4321` — the obvious typo, since that is how you say
+ * the address out loud — passed validation. `new URL(...).origin` on it is the
+ * *string* `"null"`, and `isSameOrigin` compares the `Origin` header against
+ * that. Browsers send `Origin: null` from a sandboxed iframe and from some
+ * cross-origin redirects, so the check stopped refusing exactly the callers it
+ * exists to refuse. Measured: with that value a cross-origin POST carrying
+ * `Origin: null` was **accepted**; with a correct value it is refused.
+ *
+ * That is a config typo turning a CSRF control into a no-op, which is why it is
+ * caught here rather than defended against downstream — `env.ts` is the one
+ * place that is supposed to make a bad value impossible to hold (SPEC §10).
+ */
+const httpUrl = (name: string) =>
+  z.url({
+    protocol: /^https?$/,
+    error: `${name} must be an absolute http(s) URL, e.g. https://mh.neri.ph — a bare host:port parses as a URL but has no origin.`,
+  });
+
 /** `.env` files carry strings; accept the usual spellings and normalise to boolean. */
 const boolish = z
   .union([
@@ -48,7 +71,7 @@ const EnvSchema = z
       .enum(["development", "test", "production"])
       .default("development"),
     PORT: z.coerce.number().int().min(1).max(65535).default(4321),
-    PUBLIC_SITE_URL: z.url(),
+    PUBLIC_SITE_URL: httpUrl("PUBLIC_SITE_URL"),
 
     // Database
     DATABASE_URL: z.string().startsWith("postgresql://"),
@@ -66,7 +89,7 @@ const EnvSchema = z
     IP_HASH_SALT: secret("IP_HASH_SALT"),
 
     // Object storage
-    S3_ENDPOINT: z.url(),
+    S3_ENDPOINT: httpUrl("S3_ENDPOINT"),
     S3_REGION: z.string().min(1).default("us-east-1"),
     S3_BUCKET: z.string().min(1),
     S3_ACCESS_KEY_ID: z.string().min(1),
