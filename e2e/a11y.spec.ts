@@ -239,25 +239,73 @@ test.describe("the exemptions cannot grow", () => {
       focusable: true,
       proseTextLength: 0,
       ownTextLength: 0,
+      textAfterLength: 0,
       ...overrides,
     });
 
     expect(
       [
         // "Send the request through the contact form — say what you want removed."
-        { id: "inline-in-prose", ownTextLength: 12, proseTextLength: 70 },
+        {
+          id: "inline-in-prose",
+          ownTextLength: 12,
+          proseTextLength: 70,
+          textAfterLength: 124,
+        },
+        /**
+         * The footer, measured on the served page:
+         * `<p>© 2026 Mark Hugh Neri <a>Privacy</a></p>` — 28 characters of
+         * prose around a 7-character link, which cleared the 20-character
+         * margin by ONE and un-guarded the `min-h-11` this PR added to it.
+         * Nothing follows the link, so it is not a link in a sentence.
+         */
+        {
+          id: "footer-privacy",
+          ownTextLength: 7,
+          proseTextLength: 28,
+          textAfterLength: 0,
+        },
         // <li><a>GitHub</a></li> — the parent's text IS the link's.
-        { id: "standalone-in-li", ownTextLength: 6, proseTextLength: 6 },
-        { id: "standalone-in-p", ownTextLength: 7, proseTextLength: 7 },
-        // The boundary, pinned rather than implied.
-        { id: "just-inside-margin", ownTextLength: 10, proseTextLength: 30 },
-        { id: "just-outside-margin", ownTextLength: 10, proseTextLength: 31 },
+        {
+          id: "standalone-in-li",
+          ownTextLength: 6,
+          proseTextLength: 6,
+          textAfterLength: 0,
+        },
+        {
+          id: "standalone-in-p",
+          ownTextLength: 7,
+          proseTextLength: 7,
+          textAfterLength: 0,
+        },
+        // The margin boundary, still pinned — now with text after it, so the
+        // margin is the only thing deciding.
+        {
+          id: "just-inside-margin",
+          ownTextLength: 10,
+          proseTextLength: 30,
+          textAfterLength: 20,
+        },
+        {
+          id: "just-outside-margin",
+          ownTextLength: 10,
+          proseTextLength: 31,
+          textAfterLength: 21,
+        },
+        // Long block, but the link ends it: a heading-like row, not a sentence.
+        {
+          id: "nothing-after-the-link",
+          ownTextLength: 7,
+          proseTextLength: 90,
+          textAfterLength: 0,
+        },
         // A button in prose is still a control, never exempt.
         {
           id: "button-in-prose",
           tag: "button",
           ownTextLength: 4,
           proseTextLength: 90,
+          textAfterLength: 60,
         },
       ].map(({ id, ...facts }) => ({
         id,
@@ -265,10 +313,12 @@ test.describe("the exemptions cannot grow", () => {
       })),
     ).toEqual([
       { id: "inline-in-prose", exempt: true },
+      { id: "footer-privacy", exempt: false },
       { id: "standalone-in-li", exempt: false },
       { id: "standalone-in-p", exempt: false },
       { id: "just-inside-margin", exempt: false },
       { id: "just-outside-margin", exempt: true },
+      { id: "nothing-after-the-link", exempt: false },
       { id: "button-in-prose", exempt: false },
     ]);
   });
@@ -292,6 +342,7 @@ test.describe("the exemptions cannot grow", () => {
       focusable: true,
       proseTextLength: 0,
       ownTextLength: 1,
+      textAfterLength: 0,
     };
 
     expect(
@@ -326,6 +377,7 @@ test.describe("the exemptions cannot grow", () => {
         focusable: true,
         proseTextLength: 6,
         ownTextLength: 6,
+        textAfterLength: 0,
       }),
     ).toBe(true);
   });

@@ -34,6 +34,8 @@ export interface TapTargetFacts {
   /** Length of the enclosing `p`/`li`/`figcaption` text, 0 if there is none. */
   proseTextLength: number;
   ownTextLength: number;
+  /** Trimmed text that follows this element inside that prose ancestor. */
+  textAfterLength: number;
 }
 
 /** Collected in the page for one element, so both callers see the same facts. */
@@ -61,6 +63,22 @@ export const TAP_TARGET_FACTS_FN = (el: Element): TapTargetFacts => {
     focusable: (el as HTMLElement).tabIndex >= 0,
     proseTextLength: prose ? (prose.textContent ?? "").trim().length : 0,
     ownTextLength: (el.textContent ?? "").trim().length,
+    textAfterLength: (() => {
+      if (!prose) return 0;
+      // Text nodes that come after the element, within the same prose block.
+      const walker = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT);
+      let passed = false;
+      let after = 0;
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (el.contains(node)) {
+          passed = true;
+          continue;
+        }
+        if (passed) after += (node.textContent ?? "").trim().length;
+      }
+      return after;
+    })(),
   };
 };
 
@@ -91,15 +109,35 @@ export const isDecorative = (facts: HiddenFacts): boolean =>
  * without breaking the line it sits in. `/privacy` has one — "send the request
  * through the contact form".
  *
- * Narrow on purpose. The enclosing text must be **substantially longer** than
- * the link's own, so `<li><a>GitHub</a></li>` — where the parent's text *is*
- * the link's — is not exempted. Those were real findings and were fixed with
- * `min-h-11` rather than waved through.
+ * Narrow on purpose, and narrowed again after review. The length margin alone
+ * was not enough: the footer reads
+ *
+ *     <p>© 2026 Mark Hugh Neri <a>Privacy</a></p>
+ *
+ * which is 28 characters of prose around a 7-character link — `28 > 7 + 20` by
+ * **one character**, so the footer link was exempted and the `min-h-11` this PR
+ * added to it stopped being guarded. Removing that fix passed the suite.
+ *
+ * Worse, a margin that close to its boundary depends on the length of the site
+ * owner's name and on the current year; an unrelated copy edit flips it.
+ *
+ * `textAfterLength` is the property that actually separates the two cases. A
+ * link inside a sentence has words on **both** sides of it: `/privacy`'s
+ * "contact form" is followed by 124 characters, the footer's "Privacy" by none.
+ * The footer `<p>` is a flex row of discrete items, not running prose, and this
+ * asks exactly that question without depending on a constant.
+ *
+ * `<li><a>GitHub</a></li>` — where the parent's text *is* the link's — was
+ * already excluded by the margin and is now excluded twice over.
  */
 export const PROSE_MARGIN_CHARS = 20;
 
 export const isInlineProseLink = (facts: TapTargetFacts): boolean =>
   facts.tag === "a" &&
+  // Something is written AFTER the link, inside the same block. This is what
+  // makes it a link *in a sentence* rather than a link that happens to share a
+  // container with other text.
+  facts.textAfterLength > 0 &&
   facts.proseTextLength > facts.ownTextLength + PROSE_MARGIN_CHARS;
 
 /** Is this a target the 44px floor applies to at all? */

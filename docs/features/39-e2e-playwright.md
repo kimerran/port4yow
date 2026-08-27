@@ -231,6 +231,52 @@ now has a case rather than a guess.
 Full suite after: **101 passed, 10 skipped** (the skips are the 44px checks at
 768 and 1440, which is a touch requirement).
 
+## Review round 3 — the tap-target exemption had un-guarded one of this PR's own fixes
+
+`isInlineProseLink` forgave the footer `Privacy` link **by one character**.
+Reproduced before fixing, on the served page:
+
+```
+footer <p> textContent  "© 2026 Mark Hugh NeriPrivacy"   proseLen=28
+link own text           "Privacy"                        ownLen=7
+28 > 7 + PROSE_MARGIN_CHARS(20) = 27   ->  exempt
+```
+
+So the `min-h-11` this PR added to that link was still in the markup, but nothing
+would have noticed its removal — and it is one of the three targets the suite was
+written to find. My earlier table recorded "reverting the 44px footer target
+fails 1"; that was true before the exemption existed and false after it.
+
+The reviewer's second point is the one that decides the fix: a margin that close
+to its boundary depends on the length of the site owner's name and the current
+year, so an unrelated copy edit flips it in whichever direction is least
+expected.
+
+### `textAfterLength`
+
+A link _inside a sentence_ has words on **both** sides of it. Measured on the
+same build:
+
+| link                      | own | prose | text after | verdict              |
+| ------------------------- | --- | ----- | ---------- | -------------------- |
+| `/privacy` "contact form" | 12  | 184   | **124**    | exempt — correct     |
+| footer "Privacy"          | 7   | 28    | **0**      | not exempt — correct |
+| `<li><a>GitHub</a></li>`  | 6   | 6     | 0          | not exempt — correct |
+
+The footer `<p>` is a flex row of discrete items, not running prose, and "is
+anything written after this link?" is the property that says so — without
+depending on a constant at all.
+
+### Mutations, after
+
+| Mutation                              | Before this fix        | After      |
+| ------------------------------------- | ---------------------- | ---------- |
+| footer `Privacy` loses `min-h-11`     | **0 fail** — invisible | **4 fail** |
+| `GitHub` / `LinkedIn` lose `min-h-11` | 1 fail                 | 1 fail     |
+| drop the `textAfterLength` clause     | —                      | **2 fail** |
+
+Full suite: **101 passed, 10 skipped**.
+
 ## Blocked
 
 Nothing.
