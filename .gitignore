@@ -31,6 +31,11 @@ playwright-report/
 test-results/
 .eslintcache
 
+# agent tooling — session-local, never shared.
+# Scoped to the lock file rather than all of .claude/, so shared agent config
+# can be checked in later.
+.claude/scheduled_tasks.lock
+
 # OS / editor
 .DS_Store
 Thumbs.db

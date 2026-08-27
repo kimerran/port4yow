@@ -50,6 +50,21 @@ filtered line.
 Re-verified from a clean stop each time: `PORT=5055` → 200 on 5055; `PORT=6123` → 200 on
 6123; `PORT` unset → 4321; `PORT=5056 node ./dist/server/entry.mjs` → 200 on 5056.
 
+## Review follow-up — round 2
+
+**`.claude/scheduled_tasks.lock` was committed.** A session-scoped lock holding a pid and
+session id from one machine, swept in by a `git add -A` in the round-1 commit. Untracked
+with `git rm --cached` and added to `.gitignore`, scoped to the lock file rather than all
+of `.claude/` so shared agent config can be checked in later. Lesson: `git add -A` on a
+branch where an agent is running picks up tool state — check `git status` output rather
+than trusting the glob.
+
+**Empty `PORT` bound a random port.** `Number(process.env.PORT ?? 4321)` — `??` only
+catches `undefined`/`null`, so a bare `PORT=` line in `.env` gives `Number("") === 0`, and
+Node treats port 0 as "bind any free port". Now `Number(process.env.PORT) || 4321`, which
+collapses `""`, `0` and `NaN` to the default. Verified: `PORT=` → 4321, `PORT=5077` → 5077,
+unset → 4321.
+
 ## Decisions
 
 - **TypeScript pinned to 5.9.3, not 7.0.2.** AGENT §1.1 says install `@latest`; SPEC §2's
