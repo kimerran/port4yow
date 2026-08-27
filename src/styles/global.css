@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/* BRAND.md §2–4 tokens land here in #9 (colors, type scale, radius, spacing,
+   shadows). Tailwind v4 is CSS-first — this @theme block is the only place
+   design tokens are ever configured. There is no tailwind.config.js.
+
+   @apply is reserved for exactly three recipes, added with the components
+   that need them: .card-shadow, .card-hover, .animate-deal (BRAND §11). */
+@theme {
+  /* intentionally empty until #9 */
+}

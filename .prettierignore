@@ -1,0 +1,12 @@
+dist/
+.astro/
+node_modules/
+src/generated/
+pnpm-lock.yaml
+
+# Contract documents, authored outside this repo's formatting rules.
+# BRAND.md §intro: where code and these disagree, they win — so we do not
+# rewrite them to satisfy a formatter.
+docs/SPEC.md
+docs/BRAND.md
+docs/AGENT.md
