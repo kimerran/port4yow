@@ -127,6 +127,64 @@ jobs:
       SMTP_URL: smtp://localhost:1025
       RESEND_ENABLED: "false"
 
+  # #40 — SPEC §15's 30KB JavaScript ceiling, so it cannot regress silently.
+  #
+  # Shares the `integration` job's stack because the check measures **rendered
+  # pages**, not `dist/`: Astro inlines small module scripts and only emits a
+  # separate file once they grow, so a dist-only sum reports less as the payload
+  # gets bigger. Rendering needs the database.
+  budget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Start Postgres, MinIO and Mailpit
+        run: docker compose up -d --wait postgres minio mailpit
+
+      - name: Create the media bucket
+        run: docker compose up --exit-code-from createbucket createbucket
+
+      - name: Generate per-run secrets
+        run: |
+          {
+            echo "SESSION_SECRET=$(openssl rand -base64 48)"
+            echo "FORM_SECRET=$(openssl rand -base64 48)"
+            echo "IP_HASH_SALT=$(openssl rand -base64 48)"
+          } >> "$GITHUB_ENV"
+
+      - name: Apply migrations
+        run: pnpm exec prisma migrate deploy
+
+      - name: Build
+        run: pnpm build
+
+      - name: JavaScript budget
+        run: pnpm budget:js
+
+    env:
+      DATABASE_URL: postgresql://portfolio:portfolio@localhost:5432/portfolio?schema=public
+      PUBLIC_SITE_URL: http://localhost:4321
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: portfolio-media
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+      S3_FORCE_PATH_STYLE: "true"
+      CONTACT_TO_EMAIL: inbox@mh.neri.ph
+      SMTP_URL: smtp://localhost:1025
+      RESEND_ENABLED: "false"
+
   # Separate job: a secret in the history must fail the build even if the
   # code checks pass, and it should be legible as its own red X (SPEC §14.8).
   gitleaks:

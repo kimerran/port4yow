@@ -20,6 +20,7 @@
     "job": "node --experimental-strip-types src/jobs/run.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "budget:js": "node scripts/js-budget.mjs",
     "lint": "eslint . && prettier --check .",
     "typecheck": "astro check",
     "audit": "pnpm audit --audit-level=moderate",
