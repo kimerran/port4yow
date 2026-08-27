@@ -1,5 +1,5 @@
 // @ts-check
-import { defineConfig } from "astro/config";
+import { defineConfig, fontProviders } from "astro/config";
 import node from "@astrojs/node";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -73,4 +73,50 @@ export default defineConfig({
   vite: {
     plugins: [tailwindcss()],
   },
+
+  /**
+   * BRAND §3 — three families, three jobs. Astro downloads these at BUILD time and
+   * serves them from our own origin, so there is no runtime connection to Google
+   * and no visitor IP leaks. That is the distinction BRAND §3 draws when it
+   * forbids "the Google Fonts CDN links from the mock" — the provider is a build
+   * -time source, not a third-party origin the browser talks to.
+   *
+   * Subset to latin and `font-display: swap` per SPEC §15. Only the display face
+   * is preloaded: it carries the hero name, which is the LCP element.
+   */
+  fonts: [
+    {
+      provider: fontProviders.google(),
+      name: "Bodoni Moda",
+      cssVariable: "--font-bodoni-moda",
+      weights: [600, 700],
+      styles: ["normal"],
+      subsets: ["latin"],
+      display: "swap",
+      fallbacks: ["Georgia", "serif"],
+      optimizedFallbacks: false,
+    },
+    {
+      provider: fontProviders.google(),
+      name: "Karla",
+      cssVariable: "--font-karla",
+      weights: [400, 700],
+      styles: ["normal"],
+      subsets: ["latin"],
+      display: "swap",
+      fallbacks: ["ui-sans-serif", "system-ui", "sans-serif"],
+      optimizedFallbacks: false,
+    },
+    {
+      provider: fontProviders.google(),
+      name: "IBM Plex Mono",
+      cssVariable: "--font-plex-mono",
+      weights: [500, 600],
+      styles: ["normal"],
+      subsets: ["latin"],
+      display: "swap",
+      fallbacks: ["ui-monospace", "monospace"],
+      optimizedFallbacks: false,
+    },
+  ],
 });
