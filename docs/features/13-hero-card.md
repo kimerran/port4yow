@@ -32,6 +32,39 @@ The 180°-rotated bottom-right index is BRAND §5's own requirement ("the same b
 180°, exactly as a real court card repeats itself") and compiles through Tailwind's
 `--tw-rotate` custom property rather than a literal, which is why it does not appear above.
 
+## Correction — the axe result was 0 because the hero was invisible
+
+**I reported `critical 0 · serious 0 · total 0`. That was wrong.** The real result is
+**critical 0 · serious 1**, and the 1 is the monogram:
+
+```text
+color-contrast/serious :: .text-[96px]
+ink-navy at 10% composites to #d7dfde on surface-sunken -> ratio 1.22
+```
+
+**The accepted exception:** BRAND §5 mandates _"the monogram at 10% opacity"_, the element is
+`aria-hidden` (verified in the rendered DOM), and axe scores visual contrast regardless of AT
+exposure. Same class as #12's gold sequence indices. **Recorded so #43's sweep reads it as a
+known exception rather than a regression.**
+
+### Why the scan said 0 — a method bug that would have recurred in #14
+
+`--virtual-time-budget` freezes the deal animation at its `from` state, which is
+**`opacity: 0`**. The entire hero card is therefore invisible, and **axe skips invisible
+elements**, so everything inside the card — monogram included — was silently excluded.
+
+Reproduced deterministically:
+
+| Chrome flags                               | `.animate-deal` opacity | violations |
+| ------------------------------------------ | ----------------------- | ---------- |
+| normal (×2 runs)                           | **0**                   | **0**      |
+| `--force-prefers-reduced-motion` (×3 runs) | **1**                   | **1**      |
+
+**So any page carrying the deal animation must be scanned with
+`--force-prefers-reduced-motion`.** It disables the animation, leaving the card in its final
+visible state, and the result is stable across runs. Without it the scan silently ignores the
+site's largest component. #14 and #43 both need this.
+
 ## A measurement that looked like a failure and was not
 
 `getBoundingClientRect().width` reported the card at **409px** on mobile and **555px** on
@@ -48,6 +81,16 @@ variant of the same lesson this sprint: #9 measured the right property and found
 #12 measured the wrong property and nearly invented one, and here the right property was
 measured under conditions that changed its meaning.
 
+## Accepted axe exceptions so far
+
+Both are BRAND-mandated, both `aria-hidden`, both flagged by axe because it scores visual
+contrast regardless of AT exposure:
+
+| Element                                | Ratio | Sanctioned by                            |
+| -------------------------------------- | ----- | ---------------------------------------- |
+| Gold sequence indices `01`, `02` (#12) | 1.9   | BRAND §2 — names the ratio itself        |
+| Hero monogram at 10% opacity (#13)     | 1.22  | BRAND §5 — "the monogram at 10% opacity" |
+
 ## Decisions
 
 - **The radial wash is an `@utility` in `global.css`, not a `style` attribute.** BRAND §2
@@ -59,6 +102,10 @@ measured under conditions that changed its meaning.
   the page's `<h1>` carries the name. A screen reader announcing "J J MHN" would be noise.
 - **No cardology anywhere** (BRAND §1). This reads as a playing card and nothing else — no
   tarot, no star maps, no zodiac glyphs, no mystic type.
+- **`gap-xs` (4px), not `gap-[2px]`.** BRAND §4 lists the scale and says "Nothing between
+  these values"; on a 10px mono list the visual difference is invisible but the precedent is
+  not. Every remaining arbitrary value now traces to a BRAND line, and `text-[96px]` carries
+  its justification inline as AGENT §2 asks.
 - **`index.astro` places the hero but is still a placeholder.** #14 builds the five real
   sections around it.
 

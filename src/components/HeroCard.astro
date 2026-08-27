@@ -47,13 +47,21 @@ const { stack = [], monogram = "MHN" } = Astro.props;
       <div
         class="relative flex flex-1 flex-col justify-end overflow-hidden rounded bg-surface-sunken p-sm"
       >
+        {
+          /* text-[96px] rather than text-display-xl: BRAND §3 sets display-xl to
+            96px, but #9 made that utility responsive (44/56/96) so the hero name
+            never overflows a phone. The monogram is a fixed-size watermark inside
+            a fixed-size card, so it must not shrink with the viewport — it needs
+            the 96px value without the breakpoints. AGENT §2 asks for arbitrary
+            values to be justified rather than assumed; this is that justification. */
+        }
         <span
           class="pointer-events-none absolute inset-0 flex items-center justify-center font-display text-[96px] leading-none text-ink-navy opacity-10 select-none"
           aria-hidden="true">{monogram}</span
         >
         {
           stack.length > 0 && (
-            <ul class="relative flex flex-col gap-[2px] font-mono text-[10px] leading-tight text-ink-muted">
+            <ul class="relative flex flex-col gap-xs font-mono text-[10px] leading-tight text-ink-muted">
               {stack.map((item) => (
                 <li>{item}</li>
               ))}
