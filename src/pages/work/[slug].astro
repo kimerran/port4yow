@@ -71,7 +71,17 @@ const jsonLd = {
 
       <div class="flex min-w-0 flex-col gap-md">
         {/* One of only four places the display face appears (BRAND §3). */}
-        <h1 class="font-display text-headline-lg">{project.title}</h1>
+        {
+          /* break-words because `headline-lg` has no responsive step the way BRAND §3
+            gives display-xl (96/56/44), and the content is an arbitrary
+            admin-entered title. "reconciliation" alone needs 317px at 48px Bodoni
+            and overflows a 320px viewport by 13px — measured. overflow-wrap only
+            engages when a word genuinely cannot fit, so wider layouts are
+            unaffected. */
+        }
+        <h1 class="font-display text-headline-lg break-words">
+          {project.title}
+        </h1>
         <p class="max-w-[66ch] text-body-lg text-ink-muted">
           {project.summary}
         </p>

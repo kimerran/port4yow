@@ -16,7 +16,56 @@
 
 `typecheck` 0/0/0 · `lint` PASS · **82 tests** · `build` PASS · `audit` PASS
 
-## Every measurement before this slice used the wrong viewport
+## Review follow-up — 320px overflow
+
+The acceptance sweep stopped at 375. At **320px** the document overflowed:
+
+```text
+clientW=320  scrollW=333  overflow=true
+h1: box=288  scrollWidth=317  overflow-wrap: normal
+```
+
+The word **"reconciliation"** needs 317px at 48px Bodoni; the content column offers 288. It
+cannot break, so it pushes the document to 333 and the fixed facet lattice stretches to match.
+
+**Same failure class as the 768px bug in #14** — a fixed large type size meeting a narrow
+viewport. BRAND §3 gives `display-xl` explicit steps (96/56/44) _because_ it "must never
+overflow the viewport"; `headline-lg` has no such step, and this page uses it for an arbitrary
+admin-entered title. Fixed with `break-words`; `overflow-wrap` only engages when a word
+genuinely cannot fit, so nothing wider changes:
+
+| Width    | 320   | 360   | 375   | 768   | 1440  |
+| -------- | ----- | ----- | ----- | ----- | ----- |
+| overflow | false | false | false | false | false |
+
+A responsive step for `headline-lg` would also work, but that is a BRAND §3 amendment;
+`break-words` keeps the decision inside this slice.
+
+## Viewport measurement — use CDP, not an iframe, and not `--window-size`
+
+Three corrections to what I wrote first.
+
+**1. `--window-size` clamps at 500, and my "485" was wrong.** Measured directly:
+
+```text
+--window-size=320/375/400/485/500  ->  clientWidth 500
+--window-size=640                  ->  clientWidth 640
+```
+
+The floor is **500**. My earlier 485 readings were 500 minus a 15px scrollbar on pages that
+scrolled — the two numbers were consistent; my explanation of them was not.
+
+**2. Use `Emulation.setDeviceMetricsOverride` over CDP, not the iframe I proposed.** It gives a
+true _top-level_ viewport, and the 320px overflow above was found with it. An iframe changes
+`position: fixed` containment, viewport units and scroll-container behaviour — precisely what a
+responsive-image slice needs to measure honestly. Node 24 has a built-in `WebSocket`, so the
+driver is about thirty lines against `--remote-debugging-port`.
+
+**3. Gotcha for #17/#39:** `mobile: true` on a page _without_ `<meta name="viewport">` falls
+back to a 980px layout width. Every page here inherits the meta from `BaseLayout`, so it does
+not bite this project — but it would silently invalidate a measurement on a page that lacked it.
+
+## Superseded — the original iframe note
 
 Chrome's `--window-size=375` yields a **485px** viewport — its minimum window width. So every
 "375px" figure in #10–#14 was actually measured at 485px, and the acceptance criterion here
