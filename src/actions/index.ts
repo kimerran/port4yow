@@ -4,7 +4,19 @@ import { ActionError, defineAction } from "astro:actions";
 import { z } from "astro/zod";
 import { AdminAuthError, assertAdmin, getDashboardStats } from "../lib/admin";
 import { isSameOrigin } from "../lib/origin";
+import {
+  DuplicateStackName,
+  ReorderMismatch,
+  StackItemInUse,
+  StackItemNotFound,
+  createStackItem,
+  deleteStackItem,
+  reorderStackItems,
+  updateStackItem,
+} from "../lib/stack";
+import { SUIT_ENUM_VALUES } from "../lib/suits";
 import { consume } from "../lib/ratelimit";
+import { db } from "../lib/db";
 import {
   AssetInUse,
   MAX_UPLOAD_BYTES,
@@ -13,7 +25,6 @@ import {
   processUpload,
   updateAltText as updateAssetAltText,
 } from "../lib/upload";
-import { db } from "../lib/db";
 import {
   PublishBlockedError,
   ReorderMismatchError,
@@ -80,6 +91,10 @@ function toActionError(cause: unknown): never {
     cause instanceof PublishBlockedError ||
     cause instanceof SlugImmutableError ||
     cause instanceof ReorderMismatchError ||
+    cause instanceof DuplicateStackName ||
+    cause instanceof StackItemInUse ||
+    cause instanceof StackItemNotFound ||
+    cause instanceof ReorderMismatch ||
     cause instanceof UploadRejected ||
     cause instanceof AssetInUse
   ) {
@@ -270,6 +285,87 @@ export const server = {
       requireAdmin(context);
       try {
         await reorderProjects(input.orderedIds);
+        return { ok: true };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  /**
+   * Stack items (#29). Suit values come from `SUIT_ENUM_VALUES`, derived from
+   * the same `SUITS` list the public site renders — a second hand-written list
+   * of the four suits would drift, and the one that drifts is the one nobody
+   * looks at.
+   */
+  createStackItem: defineAction({
+    accept: "form",
+    input: z.object({
+      name: z.string().trim().min(1).max(60),
+      suit: z.enum(SUIT_ENUM_VALUES),
+      featured: z.boolean().default(false),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        return await createStackItem(input);
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  updateStackItem: defineAction({
+    accept: "form",
+    input: z.object({
+      id: z.string().min(1),
+      name: z.string().trim().min(1).max(60),
+      suit: z.enum(SUIT_ENUM_VALUES),
+      featured: z.boolean().default(false),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        await updateStackItem(input);
+        return { ok: true };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  /**
+   * `confirmed` is the second step of a two-step delete. The first submit
+   * refuses and names the projects that list the item; the second proceeds.
+   * A JavaScript `confirm()` would not do — these pages ship no client script,
+   * and a confirmation that only exists in JavaScript is not a confirmation.
+   */
+  deleteStackItem: defineAction({
+    accept: "form",
+    input: z.object({
+      id: z.string().min(1),
+      confirmed: z.boolean().default(false),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        return await deleteStackItem(input.id, input.confirmed);
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  reorderStackItems: defineAction({
+    accept: "form",
+    input: z.object({
+      suit: z.enum(SUIT_ENUM_VALUES),
+      orderedIds: z.array(z.string().min(1)).min(1).max(200),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        await reorderStackItems(input.suit, input.orderedIds);
         return { ok: true };
       } catch (cause) {
         return toActionError(cause);
