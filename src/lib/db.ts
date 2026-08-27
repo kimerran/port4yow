@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../generated/prisma/client";
-import { env } from "./env";
+import { PrismaClient } from "../generated/prisma/client.ts";
+import { env } from "./env.ts";
 
 /**
  * The single PrismaClient for the whole application (AGENT §2).
@@ -9,6 +9,13 @@ import { env } from "./env";
  * connection comes from `@prisma/adapter-pg` rather than from `schema.prisma`.
  * `DATABASE_URL` arrives via `src/lib/env.ts` — validated once at boot — because
  * AGENT §3 bans reading `process.env` anywhere else, and #47 enforces that.
+ *
+ *
+Explicit `.ts` extensions on these relative imports are load-bearing, not style:
+`src/jobs/run.ts` is executed directly by Node (`node --experimental-strip-types`)
+for Railway cron, and Node's ESM resolver does not guess extensions. Vite and
+Astro accept them either way — the repo already imports `.ts` from `<script>`
+blocks — and `allowImportingTsExtensions` is on via `astro/tsconfigs/base`.
  *
  * Cached on `globalThis` in development so Astro's HMR does not open a new pool
  * on every reload and exhaust Postgres connections. Production gets exactly one.

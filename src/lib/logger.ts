@@ -1,4 +1,4 @@
-import { env } from "./env";
+import { env } from "./env.ts";
 
 /**
  * Structured logging (AGENT §4, SPEC §14.11). The only sanctioned output path —
