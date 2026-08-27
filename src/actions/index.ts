@@ -3,13 +3,33 @@ import { ActionError, defineAction } from "astro:actions";
 // Astro 8. Importing from "astro/zod" is the supported path.
 import { z } from "astro/zod";
 import { AdminAuthError, assertAdmin, getDashboardStats } from "../lib/admin";
-import { isSameOrigin } from "../lib/origin";
 import {
   MESSAGE_STATUSES,
   MessageNotFound,
   setMessageStatus,
 } from "../lib/messages";
+import { isSameOrigin } from "../lib/origin";
+import {
+  DuplicateStackName,
+  ReorderMismatch,
+  StackItemInUse,
+  StackItemNotFound,
+  createStackItem,
+  deleteStackItem,
+  reorderStackItems,
+  updateStackItem,
+} from "../lib/stack";
+import { SUIT_ENUM_VALUES } from "../lib/suits";
+import { consume } from "../lib/ratelimit";
 import { db } from "../lib/db";
+import {
+  AssetInUse,
+  MAX_UPLOAD_BYTES,
+  UploadRejected,
+  deleteAssetGroup,
+  processUpload,
+  updateAltText as updateAssetAltText,
+} from "../lib/upload";
 import {
   PublishBlockedError,
   ReorderMismatchError,
@@ -76,6 +96,12 @@ function toActionError(cause: unknown): never {
     cause instanceof PublishBlockedError ||
     cause instanceof SlugImmutableError ||
     cause instanceof ReorderMismatchError ||
+    cause instanceof DuplicateStackName ||
+    cause instanceof StackItemInUse ||
+    cause instanceof StackItemNotFound ||
+    cause instanceof ReorderMismatch ||
+    cause instanceof UploadRejected ||
+    cause instanceof AssetInUse ||
     cause instanceof MessageNotFound
   ) {
     throw new ActionError({ code: "BAD_REQUEST", message: cause.message });
@@ -266,6 +292,169 @@ export const server = {
       try {
         await reorderProjects(input.orderedIds);
         return { ok: true };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  /**
+   * Stack items (#29). Suit values come from `SUIT_ENUM_VALUES`, derived from
+   * the same `SUITS` list the public site renders — a second hand-written list
+   * of the four suits would drift, and the one that drifts is the one nobody
+   * looks at.
+   */
+  createStackItem: defineAction({
+    accept: "form",
+    input: z.object({
+      name: z.string().trim().min(1).max(60),
+      suit: z.enum(SUIT_ENUM_VALUES),
+      featured: z.boolean().default(false),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        return await createStackItem(input);
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  updateStackItem: defineAction({
+    accept: "form",
+    input: z.object({
+      id: z.string().min(1),
+      name: z.string().trim().min(1).max(60),
+      suit: z.enum(SUIT_ENUM_VALUES),
+      featured: z.boolean().default(false),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        await updateStackItem(input);
+        return { ok: true };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  /**
+   * `confirmed` is the second step of a two-step delete. The first submit
+   * refuses and names the projects that list the item; the second proceeds.
+   * A JavaScript `confirm()` would not do — these pages ship no client script,
+   * and a confirmation that only exists in JavaScript is not a confirmation.
+   */
+  deleteStackItem: defineAction({
+    accept: "form",
+    input: z.object({
+      id: z.string().min(1),
+      confirmed: z.boolean().default(false),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        return await deleteStackItem(input.id, input.confirmed);
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  reorderStackItems: defineAction({
+    accept: "form",
+    input: z.object({
+      suit: z.enum(SUIT_ENUM_VALUES),
+      orderedIds: z.array(z.string().min(1)).min(1).max(200),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        await reorderStackItems(input.suit, input.orderedIds);
+        return { ok: true };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  /**
+   * Uploads one image (#28).
+   *
+   * `accept: "form"` so the file arrives as a real multipart upload from a form
+   * that needs no JavaScript. Every validation lives in `processUpload`, which
+   * reads the file's own bytes — nothing here trusts the filename or the
+   * client-supplied `Content-Type`.
+   */
+  uploadMedia: defineAction({
+    accept: "form",
+    input: z.object({
+      projectId: z.string().min(1),
+      altText: z.string().min(1).max(500),
+      file: z
+        .instanceof(File)
+        // The size check is repeated in processUpload against the bytes we
+        // actually read. This one refuses earlier, on the declared length, so an
+        // oversized body is not buffered any further than it already was.
+        .refine((file) => file.size <= MAX_UPLOAD_BYTES, {
+          message: "That file is larger than 8 MB.",
+        }),
+    }),
+    handler: async (input, context) => {
+      const user = requireAdmin(context);
+
+      /**
+       * SPEC §14.9 — 30 uploads/hour/session. Keyed on the user id rather than
+       * an IP: the limit is per SESSION in the spec, and an admin behind a
+       * changing IP should not get a fresh budget by reconnecting.
+       */
+      const limit = await consume("upload", user.id);
+      if (!limit.allowed) {
+        throw new ActionError({
+          code: "TOO_MANY_REQUESTS",
+          message: `That is a lot of uploads. Try again in ${String(Math.ceil(limit.retryAfterSeconds / 60))} minutes.`,
+        });
+      }
+
+      try {
+        const bytes = new Uint8Array(await input.file.arrayBuffer());
+        return await processUpload({
+          bytes,
+          projectId: input.projectId,
+          altText: input.altText,
+        });
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  updateAltText: defineAction({
+    accept: "form",
+    input: z.object({
+      keyStem: z.string().min(1).max(256),
+      altText: z.string().min(1).max(500),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        const updated = await updateAssetAltText(input.keyStem, input.altText);
+        return { updated };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  deleteMedia: defineAction({
+    accept: "form",
+    input: z.object({ keyStem: z.string().min(1).max(256) }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        const deleted = await deleteAssetGroup(input.keyStem);
+        return { deleted };
       } catch (cause) {
         return toActionError(cause);
       }

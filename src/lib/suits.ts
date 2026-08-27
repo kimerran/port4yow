@@ -29,3 +29,17 @@ export function suitFromEnum(value: string): Suit {
   if (!match) throw new Error(`Unknown suit: ${value}`);
   return match;
 }
+
+/**
+ * The same taxonomy as the Prisma `Suit` enum expects it — uppercase.
+ *
+ * Derived from `SUITS` rather than written out again: two hand-maintained lists
+ * of the same four values drift, and the one that drifts is always the one
+ * nobody renders.
+ */
+export const SUIT_ENUM_VALUES = SUITS.map((suit) => suit.toUpperCase()) as [
+  "DIAMONDS",
+  "SPADES",
+  "HEARTS",
+  "CLUBS",
+];
