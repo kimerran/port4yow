@@ -5,10 +5,15 @@
  * "It reads as a progress indicator first and a dragon second." The single sine
  * curve lives in the SVG path; this file only drives the fill.
  *
- * EXTERNAL MODULE, not an inline <script>. Astro's CSP header carries only its
- * own runtime hashes and is identical on every route, so a page-level inline
- * script is blocked outright (see docs/features/10-baselayout.md). `script-src
- * 'self'` permits a bundled module, which is what an imported .ts becomes.
+ * Lives in its own module so the maths is unit-testable — that is the whole
+ * justification. CSP did NOT force it: Astro inlines this into the page (there is
+ * no .js file in the build) and hashes it, so it runs under `script-src`.
+ *
+ * The CSP rules that DO matter here, all measured:
+ *   - a plain <script> is Astro-processed, hashed at build time, and RUNS
+ *   - `is:inline` is not processed, not hashed, and is BLOCKED
+ *   - a static style="..." attribute is BLOCKED (it silently does nothing)
+ *   - a scripted `element.style.x = y` write APPLIES, which is what this file relies on
  *
  * No scroll-jacking, no parallax (BRAND §10) — this only reads scroll position.
  */

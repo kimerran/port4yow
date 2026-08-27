@@ -72,9 +72,13 @@ const ogImageUrl = ogImage
     <SiteNav />
 
     {
-      /* One of only two client scripts on public pages (SPEC §15). External
-        module, not inline: Astro's CSP carries only its own runtime hashes, so a
-        page-level inline script is blocked. `script-src 'self'` allows this. */
+      /* One of only two client scripts on public pages (SPEC §15).
+
+        A plain <script> is what you want: Astro processes it, hashes it at build
+        time, and it runs under CSP. `is:inline` opts out of that processing, is
+        never hashed, and is blocked. Astro inlines this module into the page
+        rather than emitting a .js file — the separate module exists to make the
+        maths testable, not to satisfy CSP. */
     }
     <script>
       import { initScrollRail } from "../scripts/scroll-rail.ts";

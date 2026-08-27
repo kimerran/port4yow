@@ -7,7 +7,7 @@ bar on mobile (BRAND §7).
 
 | Criterion                         | Result                                                                     |
 | --------------------------------- | -------------------------------------------------------------------------- |
-| Public-page JS                    | **714 B** — SPEC §15 allows 30 KB                                          |
+| Public-page JS                    | **782 B** — SPEC §15 allows 30 KB                                          |
 | `prefers-reduced-motion: reduce`  | `dasharray: none`, `offset: 0px` — final state, no listeners attached      |
 | Normal motion, top of a tall page | `offset: 240.32px` of `dasharray: 240.32px` — 0% drawn, correct            |
 | Scroll-position maths             | **10 unit tests** — 0/50/100%, clamping above and below, unscrollable page |
@@ -29,7 +29,39 @@ So the rule is simply: **use a plain `<script>`; never `is:inline`.** The rail's
 lives in `src/scripts/scroll-rail.ts` and the layout imports it, which is better structure and
 testable — but it was not forced by CSP the way I claimed.
 
-## Two CSP findings that affect #12, #13 and #14
+## CSP reference for #12, #13 and #14
+
+This is the paragraph the next slices need. Every line measured on one build, not inferred:
+
+| Form                           | Result                                                                |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `<script>` — Astro-processed   | **runs**; hashed at build time and the hash is in the CSP header      |
+| `<script is:inline>`           | **blocked** — opts out of processing, so never hashed                 |
+| static `style="…"` attribute   | **blocked** — silently does nothing; a `height:4000px` div measured 0 |
+| scripted `element.style.x = y` | **applies** — confirmed via `getComputedStyle`                        |
+
+**So: use a plain `<script>`, never `is:inline`. Use classes, never a `style` attribute.**
+
+### What actually ships here, and why the earlier claim was wrong twice
+
+Astro **inlines** this module into the page — there is no `.js` file in the build at all:
+
+```text
+find dist/client -name "*.js"   -> 0 files
+<script type="module">          -> 782 B, no src
+sha256 of that body             -> sha256-d2WRg22JNNo35hQfeMfJq2WAWG9kXySm7m3Xbmm0v+4=
+that hash in the CSP header     -> present
+```
+
+So it runs **because Astro hashed it**, not because `script-src 'self'` permitted a file. The
+earlier comments in `scroll-rail.ts` and `BaseLayout.astro` asserted the opposite _and_
+described the shipped artifact incorrectly — someone reading them in #13 would have avoided
+`<script>` entirely and reached for a pattern nobody needs. Both rewritten.
+
+`src/scripts/scroll-rail.ts` remains a separate module for the reason that actually holds:
+**it makes the maths unit-testable.** CSP never required it.
+
+## Superseded — the original two-finding note
 
 Both measured, not inferred:
 
