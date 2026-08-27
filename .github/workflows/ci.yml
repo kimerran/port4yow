@@ -106,8 +106,12 @@ jobs:
       - name: Apply migrations
         run: pnpm exec prisma migrate deploy
 
+      # `:ci` rather than `test:integration` — same run, but it fails on any
+      # skipped test. A skip here can only mean a gate went unset or
+      # DATABASE_URL is missing, and a green tick over a test that never ran is
+      # the exact failure this job was created to end.
       - name: Integration tests
-        run: pnpm test:integration
+        run: pnpm test:integration:ci
 
     env:
       # Matches docker-compose.yml. These belong to containers that live for one

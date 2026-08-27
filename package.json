@@ -24,7 +24,8 @@
     "typecheck": "astro check",
     "audit": "pnpm audit --audit-level=moderate",
     "postinstall": "prisma generate",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:ci": "node scripts/integration-ci.mjs"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.4",

@@ -144,6 +144,68 @@ passed, 115 skipped** · `test:integration` **115 passed** · `build` PASS.
 
 Not run: `test:e2e` — #39 has not landed.
 
+## Review round 2 — the silent-skip path is closed
+
+The review found that the glob fixed only half the problem: `INTEGRATION_GATES`
+was still a hand-maintained list of nine names, so a suite gated on a name
+nobody registered would be **collected by the glob and then skipped by its own
+`describe.skipIf`**. Reproduced before fixing:
+
+```
+a file gated on NEWTHING_IT (not in the list)
+  Test Files  9 passed | 1 skipped (10)
+  Tests     115 passed | 1 skipped (116)
+  exit code 0
+```
+
+A test that exists, is collected, never runs, and reports success — this PR's own
+thesis in miniature, and a narrower version of the mechanism that hid 115 tests
+behind a green tick from #19 to #38. The reviewer offered two fixes; both are
+here, because they close different halves.
+
+### The gate list is derived, not maintained
+
+`vitest.integration.config.ts` now reads the `*_IT` names out of the matched
+files themselves. Adding a suite with a new gate needs no edit there and cannot
+be quiet. The same file threw on an empty result before this shipped, because a
+regex that silently matches nothing would turn _every_ suite off while still
+reporting success — the failure this whole change is about.
+
+Verified: with the unregistered-gate file present, the run goes from
+`9 passed | 1 skipped (10)` to **`10 passed (10)`, 116 tests, none skipped.**
+
+### CI fails on any skipped test
+
+`pnpm test:integration:ci` runs the same suite and exits non-zero if anything
+was skipped. Deriving the gates is a mechanism that is correct today; this
+asserts the outcome, which is the distinction this repo keeps having to relearn.
+
+Locally, skipping remains correct with nothing running — which is why it is a
+separate command and `pnpm test:integration` still skips quietly. Both paths
+checked:
+
+| Command               | With Postgres                                   | Without             |
+| --------------------- | ----------------------------------------------- | ------------------- |
+| `test:integration`    | 115 passed                                      | 115 skipped, exit 0 |
+| `test:integration:ci` | `All 115 integration tests ran — none skipped.` | exits **1**         |
+
+**Control**, because a guard that never fires is indistinguishable from one that
+works: a suite whose gate name is assembled at runtime is invisible to the
+deriver, so it still skips — and the guard catches it and names it.
+
+```
+Integration run reported 1 skipped test(s).
+In CI a skip means a gate went unset or DATABASE_URL is missing — either
+way the test did not run, and a green tick would be a lie.
+
+  src/lib/__tests__/zzhidden.integration.test.ts: a suite whose gate cannot be discovered …
+```
+
+That message took a correction of its own: the first version filtered on
+`status === "pending"` and named nothing, because vitest's JSON reports these as
+`"skipped"` while the summary counts them under `numPendingTests`. Checked
+against a real run rather than assumed.
+
 ## Blocked
 
 Nothing.
