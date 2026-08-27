@@ -29,6 +29,51 @@ criterion.
 
 `pnpm typecheck` 0/0/0 · `pnpm build` OK · `.env` confirmed gitignored.
 
+## Review follow-up — round 1
+
+**1. `.env` never reached `process.env` under `astro dev`.** Vite exposes `.env` on
+`import.meta.env` only. Probe confirmed it: `procSESSION: "undefined"`,
+`procLOG: "(undefined)"`, `metaLOG: "debug"` — the file loads, just somewhere this module
+never looks. A page doing `import { env }` returned **HTTP 500**.
+
+Bridged in `astro.config.mjs` with Node 24's own `process.loadEnvFile()`, so no dependency:
+
+```js
+if (process.env.NODE_ENV !== "production") {
+  try {
+    process.loadEnvFile();
+  } catch {
+    /* no .env yet */
+  }
+}
+```
+
+It has to live there rather than in `src/` — `astro.config.mjs` is outside #47's
+`no-restricted-properties` scope, so nothing needs an exemption. Production is untouched:
+Railway injects real variables and SPEC §13 boots `node ./dist/server/entry.mjs`.
+After: **HTTP 200**, `{"log":"debug","resend":false,"port":5317}` — and that run had an
+explicit `PORT=5317` overriding `.env`'s `PORT=4321`, so **real environment variables keep
+precedence over the file**.
+
+**2. `cp .env.example .env` could not boot.** `.env` ships optional keys as bare `KEY=`,
+which is the empty string, not `undefined` — so `.optional()` still ran the format check
+against `""` and rejected it:
+
+```
+- REDIS_URL: Invalid string: must start with "redis://"
+```
+
+That is the documented first-run path, failing on a key the file itself labels optional.
+Closed the **class**, not the instance, per the review: an `optional()` helper preprocesses
+`""` to `undefined`, applied to `REDIS_URL`, `RESEND_API_KEY`, `ADMIN_PASSWORD` and
+`SHADOW_DATABASE_URL`. The latter three survived only for want of a format constraint — the
+same seam, unexercised.
+
+**3. Rebased onto `develop` and ran `pnpm lint` for the first time.** `eslint .` is clean and
+`env.ts` is confirmed as the one exempted path. Prettier flagged
+`docs/features/4-docker-compose.md`, a leftover from #48 already being fixed in #50 —
+formatted here too so this branch is independently green rather than depending on merge order.
+
 ## Decisions
 
 - **`ADMIN_PASSWORD` is optional in the schema.** SPEC §10 lists it, but it is consumed by

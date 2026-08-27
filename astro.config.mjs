@@ -3,6 +3,23 @@ import { defineConfig } from "astro/config";
 import node from "@astrojs/node";
 import tailwindcss from "@tailwindcss/vite";
 
+// Vite exposes .env on import.meta.env only — it never populates process.env.
+// src/lib/env.ts validates process.env (correct for production, where Railway
+// injects real variables and SPEC §13 boots `node ./dist/server/entry.mjs`), so
+// without this bridge every page importing `env` 500s under `astro dev`.
+//
+// Node 24 loads the file itself, so this needs no dependency. It must live here
+// rather than in src/: astro.config.mjs is outside the scope of #47's
+// no-restricted-properties ban, so no exemption has to be carved out.
+// Real environment variables keep precedence over the file.
+if (process.env.NODE_ENV !== "production") {
+  try {
+    process.loadEnvFile();
+  } catch {
+    // No .env yet — env.ts will report whatever is actually missing.
+  }
+}
+
 // SPEC §2/§3: server-rendered Astro on the standalone Node adapter.
 // Tailwind v4 is CSS-first: tokens live in @theme in src/styles/global.css.
 // There is no tailwind.config.js and never a CDN script (BRAND §11). CSP in #33.

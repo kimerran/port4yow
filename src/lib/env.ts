@@ -21,6 +21,16 @@ const secret = (name: string) =>
       `${name} must be at least ${SECRET_MIN} characters — generate with: openssl rand -base64 48`,
     );
 
+/**
+ * `.env` ships optional keys as bare `KEY=`, which is the empty string, not
+ * `undefined` — so `.optional()` alone still runs the format checks against `""`
+ * and rejects it. That made `cp .env.example .env` unbootable on `REDIS_URL`.
+ * Treat empty as absent for every optional key, closing the class rather than
+ * the one instance.
+ */
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((v) => (v === "" ? undefined : v), schema.optional());
+
 /** `.env` files carry strings; accept the usual spellings and normalise to boolean. */
 const boolish = z
   .union([
@@ -42,12 +52,12 @@ const EnvSchema = z
 
     // Database
     DATABASE_URL: z.string().startsWith("postgresql://"),
-    SHADOW_DATABASE_URL: z.string().startsWith("postgresql://").optional(),
+    SHADOW_DATABASE_URL: optional(z.string().startsWith("postgresql://")),
 
     // Admin seed. Consumed by prisma/seed.ts, not by the running server, so the
     // app must boot without it — see the seed's own stricter checks (SPEC §4).
     ADMIN_USERNAME: z.string().min(1).default("admin"),
-    ADMIN_PASSWORD: z.string().optional(),
+    ADMIN_PASSWORD: optional(z.string().min(1)),
     ADMIN_DISPLAY_NAME: z.string().min(1).default("Mark Hugh Neri"),
 
     // Secrets — never logged, never PUBLIC_*
@@ -64,13 +74,13 @@ const EnvSchema = z
     S3_FORCE_PATH_STYLE: boolish.default(true),
 
     // Email
-    RESEND_API_KEY: z.string().optional(),
+    RESEND_API_KEY: optional(z.string().min(1)),
     CONTACT_FROM_EMAIL: z.email().default("hello@mh.neri.ph"),
     CONTACT_TO_EMAIL: z.email(),
     RESEND_ENABLED: boolish.default(false),
 
     // Optional
-    REDIS_URL: z.string().startsWith("redis://").optional(),
+    REDIS_URL: optional(z.string().startsWith("redis://")),
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   })
   // Fail closed: enabling Resend without a key would silently drop mail (SPEC §7).
