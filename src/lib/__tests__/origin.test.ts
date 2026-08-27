@@ -15,6 +15,7 @@ Object.assign(process.env, {
 });
 
 const { isSameOrigin } = await import("../origin");
+const { env } = await import("../env");
 
 const req = (headers: Record<string, string>): Request =>
   new Request("https://mh.neri.ph/api/contact", { method: "POST", headers });
@@ -66,5 +67,38 @@ describe("isSameOrigin — refuses everything else", () => {
    */
   it("refuses a request with neither Origin nor Referer", () => {
     expect(isSameOrigin(req({}))).toBe(false);
+  });
+});
+
+/**
+ * #37 — the downstream half of a boundary bug `env.test.ts` now blocks.
+ *
+ * `PUBLIC_SITE_URL=localhost:4321` used to pass `z.url()`, and
+ * `new URL("localhost:4321").origin` is the *string* `"null"`. Browsers send
+ * `Origin: null` from a sandboxed iframe and from some cross-origin redirects,
+ * so a misconfigured deployment accepted exactly the callers this refuses.
+ *
+ * The fix is in `env.ts`, which is the right place — a value that cannot be
+ * held cannot be compared against. This records the consequence so the two
+ * halves stay connected: if anyone ever loosens the URL schema, they will find
+ * this test explaining what it was protecting.
+ */
+describe("Origin: null is never our origin (#37)", () => {
+  const post = (headers: Record<string, string>): Request =>
+    new Request("https://mh.neri.ph/api/contact", { method: "POST", headers });
+
+  it("refuses a sandboxed-iframe POST", () => {
+    expect(isSameOrigin(post({ Origin: "null" }))).toBe(false);
+  });
+
+  it("refuses a null Referer too", () => {
+    expect(isSameOrigin(post({ Referer: "null" }))).toBe(false);
+  });
+
+  it("the configured origin is always an absolute http(s) origin", () => {
+    // The property that makes the two cases above hold, rather than the strings.
+    const expected = new URL(env.PUBLIC_SITE_URL).origin;
+    expect(expected).toMatch(/^https?:\/\//);
+    expect(expected).not.toBe("null");
   });
 });
