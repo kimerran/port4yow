@@ -27,6 +27,44 @@ export const prerender = false;
 const startedAt = Date.now();
 
 /**
+ * How long the probe may take before it is treated as a failure.
+ *
+ * `docker stop` gives a fast connection-refused, but a black-holed network gives
+ * a HANG — and `$queryRaw` would then sit there past Railway's
+ * `healthcheckTimeout: 30`. Railway declares the poll failed either way, so this
+ * does not change the verdict; what it changes is that the request returns,
+ * releasing the connection and putting the reason in our log rather than leaving
+ * an open socket for the platform to time out.
+ *
+ * Comfortably under 30 so the answer always comes from us.
+ */
+const PROBE_TIMEOUT_MS = 5_000;
+
+/**
+ * Rejects if the probe has not settled in time.
+ *
+ * `Promise.race` rather than an abort: the driver's query is not cancellable
+ * here, so the honest description is "we stopped waiting", not "we cancelled
+ * it". The timer is cleared on the winning path so a hung probe cannot keep the
+ * process alive.
+ */
+async function withTimeout<T>(work: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error("health probe timed out"));
+        }, PROBE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
  * Nothing here names a driver, a version or a host.
  *
  * A health endpoint is unauthenticated by construction — Railway has to reach it
@@ -39,7 +77,7 @@ export const GET: APIRoute = async () => {
   const uptime = Math.floor((Date.now() - startedAt) / 1000);
 
   try {
-    await db.$queryRaw`SELECT 1`;
+    await withTimeout(db.$queryRaw`SELECT 1`);
   } catch (cause) {
     /**
      * The reason is logged, never returned. `cause.message` from a driver
