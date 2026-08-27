@@ -6,12 +6,173 @@
    gets an explicit @source line, not an accident. */
 @import "tailwindcss" source("../");
 
-/* BRAND.md §2–4 tokens land here in #9 (colors, type scale, radius, spacing,
-   shadows). Tailwind v4 is CSS-first — this @theme block is the only place
-   design tokens are ever configured. There is no tailwind.config.js.
-
-   @apply is reserved for exactly three recipes, added with the components
-   that need them: .card-shadow, .card-hover, .animate-deal (BRAND §11). */
+/* BRAND.md §2–4. This @theme block is the ONLY place design tokens are
+   configured — Tailwind v4 is CSS-first and there is no tailwind.config.js.
+   Token names map straight to utilities: --color-ink-navy gives text-ink-navy,
+   bg-ink-navy, border-ink-navy. */
 @theme {
-  /* intentionally empty until #9 */
+  /* ---- Grounds (BRAND §2) ---- */
+  --color-cool-stock: #f2f7f7; /* page ground — cool paper, never pure white, never cream */
+  --color-card-face: #ffffff; /* cards, panels, inputs — lifted off the ground */
+  --color-surface-sunken: #eef5f4; /* inset wells: image frames, code blocks */
+
+  /* ---- Ink ---- */
+  --color-ink-navy: #0a191a; /* all primary text and headlines */
+  --color-ink-muted: #3b4949; /* body copy at secondary emphasis, captions — 7.9:1 on cool-stock */
+  --color-outline: #6b7a7a; /* borders at full strength, placeholder text — 4.6:1 on card-face */
+  --color-outline-variant: #bac9c9; /* hairlines, dividers, disabled */
+
+  /* ---- Accents — three, and only three ---- */
+  --color-luminous-cyan: #00ced1; /* primary action, live/active state, focus */
+  --color-deep-teal: #004b4d; /* the rail, link underlines, dense accent type */
+  --color-metallic-gold: #d4af37; /* rank indices and suit pips ONLY — 1.9:1 on white, never text */
+
+  /* Readable stand-in wherever a gold-toned label must carry text (BRAND §2). */
+  --color-secondary: #735c00;
+
+  /* ---- Status ---- */
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-success: #005354;
+
+  /* ---- Elevation: one recipe, sitewide. No glassmorphism, no glows. ---- */
+  --shadow-card:
+    0 1px 2px rgba(10, 25, 26, 0.08), 0 8px 24px rgba(10, 25, 26, 0.08);
+  --shadow-card-hover:
+    0 4px 8px rgba(10, 25, 26, 0.12), 0 16px 32px rgba(10, 25, 26, 0.12);
+
+  /* ---- Typography (BRAND §3) — three families, three jobs, no overlap.
+     The inner variables (--font-bodoni-moda etc.) are emitted by Astro's font
+     pipeline in astro.config.mjs, which self-hosts the files. They are named
+     distinctly so they do not collide with Tailwind's own --font-* namespace;
+     these three lines are what turn them into font-display/font-body/font-mono
+     utilities, with the fallback stacks BRAND §3 specifies. ---- */
+  --font-display: var(--font-bodoni-moda), Georgia, serif;
+  --font-body: var(--font-karla), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --text-display-xl: 96px; /* hero only */
+  --text-display-xl--line-height: 100px;
+  --text-display-xl--letter-spacing: -0.02em;
+  --text-display-xl--font-weight: 700;
+
+  --text-headline-lg: 48px; /* project detail titles */
+  --text-headline-lg--line-height: 56px;
+  --text-headline-lg--font-weight: 600;
+
+  --text-headline-md: 32px; /* section headings — the floor for Bodoni */
+  --text-headline-md--line-height: 40px;
+  --text-headline-md--font-weight: 500;
+
+  --text-body-lg: 18px; /* hero thesis, lead paragraphs */
+  --text-body-lg--line-height: 1.6;
+  --text-body-lg--font-weight: 400;
+
+  --text-body-md: 16px; /* default — also the minimum for inputs, to stop iOS zoom-on-focus */
+  --text-body-md--line-height: 1.6;
+  --text-body-md--font-weight: 400;
+
+  --text-label-sm: 12px; /* mono labels, uppercase */
+  --text-label-sm--line-height: 16px;
+  --text-label-sm--letter-spacing: 0.1em;
+  --text-label-sm--font-weight: 500;
+
+  --text-index-rank: 14px; /* corner indices */
+  --text-index-rank--line-height: 14px;
+  --text-index-rank--letter-spacing: 0.05em;
+  --text-index-rank--font-weight: 600;
+
+  /* ---- Geometry (BRAND §4) ---- */
+  --radius-DEFAULT: 4px; /* inline chips and inputs */
+  --radius-lg: 8px; /* cards and buttons */
+
+  /* Spacing scale — nothing between these values. */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 40px;
+  --spacing-2xl: 64px;
+  --spacing-3xl: 96px;
+
+  /* Card ratio governs. Nothing on this site is a circle or a perfect square. */
+  --aspect-card: 5 / 7;
+}
+
+/* display-xl must never overflow the viewport (BRAND §3). */
+@utility text-display-xl {
+  font-size: 44px;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+
+  @media (width >= 40rem) {
+    font-size: 56px;
+  }
+
+  @media (width >= 48rem) {
+    font-size: 96px;
+    line-height: 100px;
+  }
+}
+
+/* The three sanctioned @apply recipes (BRAND §11). Everything else is
+   utilities in markup. */
+@utility card-shadow {
+  box-shadow: var(--shadow-card);
+}
+
+@utility card-hover {
+  transition:
+    transform 300ms ease,
+    box-shadow 300ms ease;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  /* BRAND §9 — reduced motion disables tile lifts entirely. */
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:hover {
+      transform: none;
+    }
+  }
+}
+
+/* The only entrance animation on the site (BRAND §5). */
+@keyframes deal-card {
+  from {
+    opacity: 0;
+    transform: translate(-50px, -50px) rotate(-15deg) scale(1.1);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility animate-deal {
+  animation: deal-card 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@layer base {
+  html {
+    background-color: var(--color-cool-stock);
+    color: var(--color-ink-navy);
+    font-family: var(--font-body);
+  }
+
+  /* BRAND §9 — visible focus on every interactive element. Never outline: none. */
+  :focus-visible {
+    outline: 2px solid var(--color-luminous-cyan);
+    outline-offset: 2px;
+  }
 }
