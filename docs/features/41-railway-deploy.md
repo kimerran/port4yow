@@ -87,10 +87,54 @@ Multi-stage: build with devDependencies, then copy `dist/`, the production
 | `SIGTERM`                                       | stops in **0s**                                                         |
 | image size                                      | 966 MB                                                                  |
 
-966 MB is large. It is dominated by `sharp`'s platform binaries, the Prisma
-client and `@aws-sdk/client-s3`, all of which are genuinely used at runtime.
-Worth revisiting if pull time becomes a problem; not worth trading correctness
-for now, and not something to shave blind.
+### 966 MB, attributed properly
+
+The first version of this section said the size was "dominated by `sharp`'s
+platform binaries, the Prisma client and `@aws-sdk/client-s3`, all of which are
+genuinely used at runtime". Review challenged that, and measuring inside the
+image shows it was wrong — the sentence would have stopped anyone looking again.
+
+`node_modules` is **482 MB** of the image. Dereferencing pnpm's symlinks:
+
+| Package                               | Size      | Runs in production?    |
+| ------------------------------------- | --------- | ---------------------- |
+| `@prisma/client`                      | 135 MB    | yes                    |
+| **`@prisma/studio-core`**             | **61 MB** | no — the Studio GUI    |
+| `@prisma/config`                      | 35 MB     | boot only              |
+| **`@electric-sql/pglite-socket`**     | **24 MB** | no — embedded Postgres |
+| **`@prisma/dev`**                     | **20 MB** | no                     |
+| **`@rolldown/binding-linux-x64-gnu`** | **19 MB** | no — a bundler binary  |
+| `sharp` (+ libvips)                   | 23 MB     | yes                    |
+| `@aws-sdk/client-s3`                  | 16 MB     | yes                    |
+| `@node-rs/argon2`                     | 0.8 MB    | yes                    |
+
+The three packages originally named total **40 MB — 8%**. Tooling that never
+runs totals **125 MB — 26%**, three times more.
+
+**But it is not caused by moving `prisma` to `dependencies`**, which is where
+review expected the cause to be, and it is worth being exact because the wrong
+cause suggests the wrong fix. `prisma` is an _optional peer_ of
+`@prisma/client`, so that hypothesis is reasonable — it just does not hold.
+Built both ways:
+
+| Production install            | `node_modules` | `prisma` CLI | `studio-core` / `@prisma/dev` / rolldown |
+| ----------------------------- | -------------- | ------------ | ---------------------------------------- |
+| `prisma` in `dependencies`    | **482 MB**     | present      | present                                  |
+| `prisma` in `devDependencies` | **482 MB**     | absent       | **present**                              |
+
+Identical, with the heavy packages there either way. Reverting the dependency
+move would cost the container its migration step and save nothing.
+
+**The actual cause is the install shape.** The image links **17** packages at
+the top level and materialises **424** into `node_modules/.pnpm` — the whole
+lockfile graph, devDependencies included. `pnpm install --prod` is pruning what
+is _linked_, not what is _fetched_. `--node-linker=hoisted` does not help
+(measured: 477 MB, 317 packages, `studio-core` still present).
+
+So the lever is a self-contained production install — `pnpm deploy` (which wants
+a workspace and fails outside one), or copying only the reachable closure — and
+not a dependency move. Left for whoever picks up image size, with the
+measurements above so they do not start where I did.
 
 ## A conflict to resolve before the first deploy
 
