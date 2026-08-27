@@ -39,6 +39,36 @@ export default defineConfig({
   // on every state-changing handler; this is the framework-level backstop.
   security: {
     checkOrigin: true,
+
+    /**
+     * SPEC §14.2 — CSP through Astro's own API rather than hand-rolled header
+     * strings (AGENT §2). Its real value is that it hashes every inline script
+     * and style Astro emits, so `unsafe-inline` is never needed.
+     *
+     * Astro emits this as a real `content-security-policy` RESPONSE HEADER in a
+     * production build (its docstring example shows a <meta> tag, which would
+     * have silently dropped `frame-ancestors` — verified against a built server
+     * rather than trusting the docs). The remaining SPEC §14.3 headers have no
+     * Astro equivalent and are set in src/middleware.ts.
+     */
+    csp: {
+      algorithm: "SHA-256",
+      directives: [
+        "default-src 'self'",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "object-src 'none'",
+        // Fonts are self-hosted by #9, so no third-party origin is needed.
+        "font-src 'self'",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "frame-src 'none'",
+        "manifest-src 'self'",
+        "media-src 'self'",
+        "worker-src 'self'",
+      ],
+    },
   },
   vite: {
     plugins: [tailwindcss()],
