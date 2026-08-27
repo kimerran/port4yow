@@ -4,6 +4,11 @@ import { ActionError, defineAction } from "astro:actions";
 import { z } from "astro/zod";
 import { AdminAuthError, assertAdmin, getDashboardStats } from "../lib/admin";
 import { isSameOrigin } from "../lib/origin";
+import {
+  MESSAGE_STATUSES,
+  MessageNotFound,
+  setMessageStatus,
+} from "../lib/messages";
 import { db } from "../lib/db";
 import {
   PublishBlockedError,
@@ -70,7 +75,8 @@ function toActionError(cause: unknown): never {
   if (
     cause instanceof PublishBlockedError ||
     cause instanceof SlugImmutableError ||
-    cause instanceof ReorderMismatchError
+    cause instanceof ReorderMismatchError ||
+    cause instanceof MessageNotFound
   ) {
     throw new ActionError({ code: "BAD_REQUEST", message: cause.message });
   }
@@ -259,6 +265,28 @@ export const server = {
       requireAdmin(context);
       try {
         await reorderProjects(input.orderedIds);
+        return { ok: true };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  /**
+   * Triage a contact message (#30). The only mutation the inbox performs —
+   * messages are never edited or deleted from here, because a stored
+   * submission is a record of something a person sent.
+   */
+  setMessageStatus: defineAction({
+    accept: "form",
+    input: z.object({
+      id: z.string().min(1),
+      status: z.enum(MESSAGE_STATUSES),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        await setMessageStatus(input.id, input.status);
         return { ok: true };
       } catch (cause) {
         return toActionError(cause);
