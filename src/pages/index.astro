@@ -1,6 +1,9 @@
 ---
-// Placeholder. The real home page is #14, built on BaseLayout (#10) and the
-// BRAND.md token set (#9). Nothing here is design work.
+// Placeholder. The real home page is #14, built on BaseLayout (#10) with the
+// BRAND.md token set (#9). The utility classes here only prove the Tailwind
+// pipeline is wired; they are not design work and #9/#14 replace them.
+import "../styles/global.css";
+
 const title = "mh.neri.ph";
 ---
 
@@ -11,9 +14,9 @@ const title = "mh.neri.ph";
     <title>{title}</title>
   </head>
   <body>
-    <main>
-      <h1>{title}</h1>
-      <p>Scaffold only — see the sprint backlog.</p>
+    <main class="mx-auto max-w-2xl p-8">
+      <h1 class="text-3xl font-bold">{title}</h1>
+      <p class="mt-4">Scaffold only — see the sprint backlog.</p>
     </main>
   </body>
 </html>

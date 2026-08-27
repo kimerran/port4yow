@@ -1,0 +1,17 @@
+/* source("../") scopes automatic source detection to src/ — the path is
+   relative to this stylesheet. Without it Tailwind v4 walks the project root
+   and extracts candidates from every non-ignored text file, so ordinary words
+   in README.md and docs/ become utilities and the production CSS grows with
+   the prose rather than the markup. Anything outside src/ that needs scanning
+   gets an explicit @source line, not an accident. */
+@import "tailwindcss" source("../");
+
+/* BRAND.md §2–4 tokens land here in #9 (colors, type scale, radius, spacing,
+   shadows). Tailwind v4 is CSS-first — this @theme block is the only place
+   design tokens are ever configured. There is no tailwind.config.js.
+
+   @apply is reserved for exactly three recipes, added with the components
+   that need them: .card-shadow, .card-hover, .animate-deal (BRAND §11). */
+@theme {
+  /* intentionally empty until #9 */
+}

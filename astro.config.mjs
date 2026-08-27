@@ -1,9 +1,11 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import node from "@astrojs/node";
+import tailwindcss from "@tailwindcss/vite";
 
 // SPEC §2/§3: server-rendered Astro on the standalone Node adapter.
-// Tailwind v4 (@tailwindcss/vite) is added in #2; CSP in #33.
+// Tailwind v4 is CSS-first: tokens live in @theme in src/styles/global.css.
+// There is no tailwind.config.js and never a CDN script (BRAND §11). CSP in #33.
 export default defineConfig({
   output: "server",
   adapter: node({ mode: "standalone" }),
@@ -20,5 +22,8 @@ export default defineConfig({
   // on every state-changing handler; this is the framework-level backstop.
   security: {
     checkOrigin: true,
+  },
+  vite: {
+    plugins: [tailwindcss()],
   },
 });
