@@ -1,0 +1,74 @@
+---
+import SuitGlyph from "./SuitGlyph.astro";
+
+/**
+ * BRAND §7 — ONE navigation, not two. The mock defines both a top bar and an 80px
+ * left rail, both `hidden md:flex fixed`, and they collide.
+ *
+ * Exactly one <nav> exists in the DOM at any time. The two presentations are
+ * mutually exclusive at the `md` breakpoint via `hidden`/`md:flex`, so the
+ * accessibility tree never contains two navigation regions — verified in the
+ * acceptance check rather than assumed from the classes.
+ */
+
+const links = [
+  { href: "/#work", label: "Selected work", suit: "diamonds" as const },
+  { href: "/#stack", label: "The stack", suit: "spades" as const },
+  { href: "/#background", label: "Background", suit: "hearts" as const },
+  { href: "/#contact", label: "Contact", suit: "clubs" as const },
+];
+---
+
+{/* Desktop: 80px left rail. */}
+<nav
+  aria-label="Primary"
+  class="fixed top-0 bottom-0 left-0 z-20 hidden w-20 flex-col items-center gap-lg border-r border-outline-variant bg-card-face py-lg md:flex"
+>
+  <a
+    href="/"
+    class="flex h-11 min-w-11 items-center justify-center rounded px-sm font-mono text-index-rank text-ink-navy"
+    aria-label="Home — Mark Hugh Neri"><span aria-hidden="true">MHN</span></a
+  >
+  <ul class="flex flex-col items-center gap-md">
+    {
+      links.map((link) => (
+        <li>
+          <a
+            href={link.href}
+            class="flex h-11 w-11 items-center justify-center rounded text-ink-muted hover:text-ink-navy"
+          >
+            <SuitGlyph suit={link.suit} />
+            <span class="sr-only">{link.label}</span>
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</nav>
+
+{/* Mobile: 56px sticky top bar. */}
+<nav
+  aria-label="Primary"
+  class="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-outline-variant bg-card-face px-md md:hidden"
+>
+  <a
+    href="/"
+    class="flex h-11 items-center rounded pr-sm font-mono text-index-rank text-ink-navy"
+    >Mark Hugh Neri</a
+  >
+  <ul class="flex items-center gap-sm">
+    {
+      links.map((link) => (
+        <li>
+          <a
+            href={link.href}
+            class="flex h-11 w-11 items-center justify-center rounded text-ink-muted"
+          >
+            <SuitGlyph suit={link.suit} />
+            <span class="sr-only">{link.label}</span>
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</nav>

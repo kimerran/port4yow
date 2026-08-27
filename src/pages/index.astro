@@ -1,22 +1,14 @@
 ---
-// Placeholder. The real home page is #14, built on BaseLayout (#10) with the
-// BRAND.md token set (#9). The utility classes here only prove the Tailwind
-// pipeline is wired; they are not design work and #9/#14 replace them.
-import "../styles/global.css";
-
-const title = "mh.neri.ph";
+import BaseLayout from "../layouts/BaseLayout.astro";
 ---
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
-  </head>
-  <body>
-    <main class="mx-auto max-w-2xl p-8">
-      <h1 class="text-3xl font-bold">{title}</h1>
-      <p class="mt-4">Scaffold only — see the sprint backlog.</p>
-    </main>
-  </body>
-</html>
+<BaseLayout
+  title="Mark Hugh Neri — full-stack engineer"
+  description="Full-stack developer and software engineer. Schema, server, interface, and the pipeline that ships them."
+>
+  {/* Placeholder. #14 builds the real home page on this shell. */}
+  <h1 class="font-display text-display-xl">Mark Hugh Neri</h1>
+  <p class="mt-md max-w-[66ch] text-body-lg text-ink-muted">
+    Scaffold only — see the sprint backlog.
+  </p>
+</BaseLayout>
