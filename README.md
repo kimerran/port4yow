@@ -23,12 +23,12 @@ private S3 bucket, deployed to Railway at [`mh.neri.ph`](https://mh.neri.ph).
 Three documents govern this project. They are the contract; where code and a document
 disagree, the document wins.
 
-| File | Authority | Covers |
-|---|---|---|
-| **[SPEC.md](docs/SPEC.md)** | What to build | Scope, data model, routes, auth, storage, security requirements, build order |
-| **[BRAND.md](docs/BRAND.md)** | How it looks | "The Wild Card" visual system — tokens, type, geometry, components, voice, reject list |
-| **[AGENT.md](docs/AGENT.md)** | How to work | Stack conventions, per-route security checklist, code style, definition of done |
-| **[auto-dev.md](auto-dev.md)** | Autonomous loop | How an agent picks and ships the next issue |
+| File                           | Authority       | Covers                                                                                 |
+| ------------------------------ | --------------- | -------------------------------------------------------------------------------------- |
+| **[SPEC.md](docs/SPEC.md)**    | What to build   | Scope, data model, routes, auth, storage, security requirements, build order           |
+| **[BRAND.md](docs/BRAND.md)**  | How it looks    | "The Wild Card" visual system — tokens, type, geometry, components, voice, reject list |
+| **[AGENT.md](docs/AGENT.md)**  | How to work     | Stack conventions, per-route security checklist, code style, definition of done        |
+| **[auto-dev.md](auto-dev.md)** | Autonomous loop | How an agent picks and ships the next issue                                            |
 
 Read all three before writing code.
 
@@ -47,21 +47,21 @@ dashboards, password-reset flows. (The admin password rotates via the seed/CLI.)
 
 ## Stack
 
-| Layer | Choice |
-|---|---|
-| Runtime | Node.js 24 LTS |
-| Framework | Astro 7, `output: "server"`, `@astrojs/node` standalone |
-| Language | TypeScript, `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` |
-| Styling | Tailwind CSS v4 via `@tailwindcss/vite` — CSS-first, **no config file** |
-| ORM | Prisma 7 (Rust-free client + `@prisma/adapter-pg`) |
-| Database | PostgreSQL 17 |
-| Object storage | S3-compatible — MinIO, private bucket |
-| Validation | Zod |
-| Passwords | `@node-rs/argon2` (argon2id) |
-| Email | Resend (Mailpit in dev) |
-| Images | `sharp` |
-| Testing | Vitest + Playwright |
-| Hosting | Railway (web + Postgres + MinIO) |
+| Layer          | Choice                                                                           |
+| -------------- | -------------------------------------------------------------------------------- |
+| Runtime        | Node.js 24 LTS                                                                   |
+| Framework      | Astro 7, `output: "server"`, `@astrojs/node` standalone                          |
+| Language       | TypeScript, `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` |
+| Styling        | Tailwind CSS v4 via `@tailwindcss/vite` — CSS-first, **no config file**          |
+| ORM            | Prisma 7 (Rust-free client + `@prisma/adapter-pg`)                               |
+| Database       | PostgreSQL 17                                                                    |
+| Object storage | S3-compatible — MinIO, private bucket                                            |
+| Validation     | Zod                                                                              |
+| Passwords      | `@node-rs/argon2` (argon2id)                                                     |
+| Email          | Resend (Mailpit in dev)                                                          |
+| Images         | `sharp`                                                                          |
+| Testing        | Vitest + Playwright                                                              |
+| Hosting        | Railway (web + Postgres + MinIO)                                                 |
 
 **No UI framework.** No React, Vue, or Svelte — pages are `.astro`, server-rendered.
 Public pages ship under 30KB of JS, and the only two client scripts are the scroll rail
@@ -124,20 +124,20 @@ leaves the machine.
 
 ### Scripts
 
-| Script | Does |
-|---|---|
-| `pnpm dev` | Astro dev server |
-| `pnpm build` | `astro check && astro build` |
-| `pnpm typecheck` | `astro check` |
-| `pnpm lint` | `eslint . && prettier --check .` |
-| `pnpm test` | Vitest (unit + integration) |
-| `pnpm test:e2e` | Playwright |
-| `pnpm db:up` | Start the dev containers |
-| `pnpm db:migrate` | `prisma migrate dev` |
-| `pnpm db:deploy` | `prisma migrate deploy` (CI/production) |
-| `pnpm db:seed` | Seed admin, stack, settings |
-| `pnpm db:reset` | Reset and reseed |
-| `pnpm audit` | `pnpm audit --audit-level=moderate` |
+| Script            | Does                                    |
+| ----------------- | --------------------------------------- |
+| `pnpm dev`        | Astro dev server                        |
+| `pnpm build`      | `astro check && astro build`            |
+| `pnpm typecheck`  | `astro check`                           |
+| `pnpm lint`       | `eslint . && prettier --check .`        |
+| `pnpm test`       | Vitest (unit + integration)             |
+| `pnpm test:e2e`   | Playwright                              |
+| `pnpm db:up`      | Start the dev containers                |
+| `pnpm db:migrate` | `prisma migrate dev`                    |
+| `pnpm db:deploy`  | `prisma migrate deploy` (CI/production) |
+| `pnpm db:seed`    | Seed admin, stack, settings             |
+| `pnpm db:reset`   | Reset and reseed                        |
+| `pnpm audit`      | `pnpm audit --audit-level=moderate`     |
 
 ---
 
@@ -146,16 +146,16 @@ leaves the machine.
 Sprints are **sequential** and follow SPEC §17's build order — ship each step working
 before starting the next, rather than scaffolding every page and filling them in later.
 
-| Milestone | Theme | Issues |
-|---|---|---|
-| [Sprint 1](https://github.com/kimerran/port4yow/milestone/1) | Foundation — scaffold, tooling, data layer, logging, env | 9 |
-| [Sprint 2](https://github.com/kimerran/port4yow/milestone/2) | Design system & home page, security headers baseline | 7 |
-| [Sprint 3](https://github.com/kimerran/port4yow/milestone/3) | Project detail, Markdown, images, media serving | 5 |
-| [Sprint 4](https://github.com/kimerran/port4yow/milestone/4) | Contact form, Resend, rate limiting | 4 |
-| [Sprint 5](https://github.com/kimerran/port4yow/milestone/5) | Authentication & sessions | 3 |
-| [Sprint 6](https://github.com/kimerran/port4yow/milestone/6) | Admin CMS | 6 |
-| [Sprint 7](https://github.com/kimerran/port4yow/milestone/7) | Security verification, SEO, ops | 4 |
-| [Sprint 8](https://github.com/kimerran/port4yow/milestone/8) | Testing sweeps, perf budget, Railway launch | 5 |
+| Milestone                                                    | Theme                                                    | Issues |
+| ------------------------------------------------------------ | -------------------------------------------------------- | ------ |
+| [Sprint 1](https://github.com/kimerran/port4yow/milestone/1) | Foundation — scaffold, tooling, data layer, logging, env | 9      |
+| [Sprint 2](https://github.com/kimerran/port4yow/milestone/2) | Design system & home page, security headers baseline     | 7      |
+| [Sprint 3](https://github.com/kimerran/port4yow/milestone/3) | Project detail, Markdown, images, media serving          | 5      |
+| [Sprint 4](https://github.com/kimerran/port4yow/milestone/4) | Contact form, Resend, rate limiting                      | 4      |
+| [Sprint 5](https://github.com/kimerran/port4yow/milestone/5) | Authentication & sessions                                | 3      |
+| [Sprint 6](https://github.com/kimerran/port4yow/milestone/6) | Admin CMS                                                | 6      |
+| [Sprint 7](https://github.com/kimerran/port4yow/milestone/7) | Security verification, SEO, ops                          | 4      |
+| [Sprint 8](https://github.com/kimerran/port4yow/milestone/8) | Testing sweeps, perf budget, Railway launch              | 5      |
 
 Issues are also labelled by area (`area/infra`, `area/data`, `area/design-system`,
 `area/public-site`, `area/admin`, `area/auth`, `area/media`, `area/email`, `area/testing`)

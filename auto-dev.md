@@ -114,12 +114,12 @@ silently create a redundant `-1` branch alongside an existing one if you do not 
 The scaffold (#1) landed the Astro app, so `pnpm install`, `pnpm typecheck`, `pnpm build`
 and `pnpm dev` all work. **The rest of the gate does not exist yet:**
 
-| Command | Available after |
-|---|---|
-| `pnpm lint` | #3 (ESLint + Prettier) |
-| `pnpm test` | #8 / #37 (Vitest) |
-| `pnpm test:e2e` | #39 (Playwright) |
-| `pnpm db:*` | #5 (Prisma) |
+| Command         | Available after        |
+| --------------- | ---------------------- |
+| `pnpm lint`     | #3 (ESLint + Prettier) |
+| `pnpm test`     | #8 / #37 (Vitest)      |
+| `pnpm test:e2e` | #39 (Playwright)       |
+| `pnpm db:*`     | #5 (Prisma)            |
 
 Run whatever subset exists and **say plainly in the PR which commands you could not run.**
 Never claim a gate passed that you did not invoke.
@@ -137,9 +137,11 @@ Never claim a gate passed that you did not invoke.
    - Are its dependencies merged? (Issues name them: "Blocks #17", "Follows #33".)
 
 3. **If clear — build it.**
+
    ```bash
    gh issue develop <n> --base develop --checkout
    ```
+
    **`--base develop` is required.** Without it `gh` branches from the default branch
    (`main`), and the PR will be diffed against the wrong base.
    - Implement the issue's scope. **Vertical slice, working end to end** — not a stub.
@@ -152,6 +154,7 @@ Never claim a gate passed that you did not invoke.
    - Check the issue's own acceptance boxes as you satisfy them.
 
 4. **Verify before claiming anything.**
+
    ```bash
    pnpm typecheck && pnpm lint && pnpm test
    ```
