@@ -53,6 +53,12 @@ importers:
       resend:
         specifier: ^6.24.0
         version: 6.24.0
+      sharp:
+        specifier: ^0.35.4
+        version: 0.35.4(@types/node@26.4.0)
+      ulid:
+        specifier: ^3.0.2
+        version: 3.0.2
       unified:
         specifier: ^11.0.5
         version: 11.0.5
@@ -3539,6 +3545,10 @@ packages:
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
 
+  ulid@3.0.2:
+    resolution: {integrity: sha512-yu26mwteFYzBAot7KVMqFGCVpsF6g8wXfJzQUHvu1no3+rRRSFcSV2nKeYvNPLD2J4b08jYBDhHUjeH0ygIl9w==}
+    hasBin: true
+
   ultrahtml@1.7.0:
     resolution: {integrity: sha512-2xRd0VHoAQE4M+vF/DvFFB7pUV0ZxTW1TLi7lHQWnF/Sb5TPeEUV/l+hxcNnGO00ZXGnR0voCMmYRKQf+rvJ2g==}
 
@@ -4490,8 +4500,7 @@ snapshots:
 
   '@humanwhocodes/retry@0.4.3': {}
 
-  '@img/colour@1.1.0':
-    optional: true
+  '@img/colour@1.1.0': {}
 
   '@img/sharp-darwin-arm64@0.35.4':
     optionalDependencies:
@@ -7412,7 +7421,6 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.4
       '@img/sharp-win32-x64': 0.35.4
       '@types/node': 26.4.0
-    optional: true
 
   shebang-command@2.0.0:
     dependencies:
@@ -7647,6 +7655,8 @@ snapshots:
   typescript@5.9.3: {}
 
   ufo@1.6.4: {}
+
+  ulid@3.0.2: {}
 
   ultrahtml@1.7.0: {}
 

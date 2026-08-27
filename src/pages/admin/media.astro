@@ -1,0 +1,255 @@
+---
+import { actions } from "astro:actions";
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import Button from "../../components/Button.astro";
+import { assertAdmin } from "../../lib/admin";
+import { db } from "../../lib/db";
+import { derivativeStem } from "../../lib/images";
+
+/**
+ * `GET /admin/media` — the media library (SPEC §9, #28).
+ *
+ * Rows are grouped by key stem. Every upload produces one `MediaAsset` row per
+ * derivative — #42's route authorises by row lookup, so a derivative without a
+ * row is unreachable (#17 measured that) — but a person thinks in images, not in
+ * eight rows. The grid shows one card per image and the actions operate on the
+ * stem.
+ */
+assertAdmin(Astro.locals);
+
+const uploadResult = Astro.getActionResult(actions.uploadMedia);
+const altResult = Astro.getActionResult(actions.updateAltText);
+const deleteResult = Astro.getActionResult(actions.deleteMedia);
+const errorMessage =
+  uploadResult?.error?.message ??
+  altResult?.error?.message ??
+  deleteResult?.error?.message ??
+  null;
+
+const [assets, projects] = await Promise.all([
+  db.mediaAsset.findMany({
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      key: true,
+      mimeType: true,
+      byteSize: true,
+      width: true,
+      height: true,
+      altText: true,
+      blurDataUrl: true,
+      coverOf: { select: { title: true } },
+      projectUses: { select: { project: { select: { title: true } } } },
+    },
+  }),
+  db.project.findMany({
+    orderBy: { sequence: "asc" },
+    select: { id: true, title: true },
+  }),
+]);
+
+interface Group {
+  stem: string;
+  altText: string;
+  blurDataUrl: string | null;
+  derivatives: number;
+  bytes: number;
+  widest: { key: string; width: number | null; height: number | null } | null;
+  usedBy: string[];
+}
+
+const groups = new Map<string, Group>();
+for (const asset of assets) {
+  const stem = derivativeStem(asset.key) ?? asset.key;
+  const group = groups.get(stem) ?? {
+    stem,
+    altText: asset.altText,
+    blurDataUrl: asset.blurDataUrl,
+    derivatives: 0,
+    bytes: 0,
+    widest: null,
+    usedBy: [],
+  };
+
+  group.derivatives += 1;
+  group.bytes += asset.byteSize;
+
+  // The widest WebP is what a preview should point at: #17 picks the fallback
+  // <img src> from the non-AVIF rows, so it is the one guaranteed to display.
+  if (
+    asset.mimeType === "image/webp" &&
+    (group.widest === null || (asset.width ?? 0) > (group.widest.width ?? 0))
+  ) {
+    group.widest = { key: asset.key, width: asset.width, height: asset.height };
+  }
+
+  if (asset.coverOf) group.usedBy.push(`${asset.coverOf.title} (cover)`);
+  for (const use of asset.projectUses) group.usedBy.push(use.project.title);
+
+  groups.set(stem, group);
+}
+
+const library = [...groups.values()].map((group) => ({
+  ...group,
+  usedBy: [...new Set(group.usedBy)],
+}));
+
+const kb = (bytes: number): string => `${(bytes / 1024).toFixed(0)} KB`;
+
+const field =
+  "min-h-11 w-full rounded border border-outline-variant bg-card-face px-md py-sm text-body-md text-ink-navy";
+const label = "font-mono text-label-sm text-ink-muted";
+---
+
+<AdminLayout title="Media — admin" heading="Media">
+  <p class="text-[14px] text-error" role="status" aria-live="polite">
+    {errorMessage}
+  </p>
+
+  <section class="flex flex-col gap-md">
+    <h2 class="font-mono text-label-sm tracking-wide text-ink-muted uppercase">
+      Upload
+    </h2>
+
+    {
+      projects.length === 0 ? (
+        <p class="text-body-md text-ink-muted">
+          Create a project first — every image is filed under one.
+        </p>
+      ) : (
+        <form
+          method="POST"
+          action={actions.uploadMedia}
+          enctype="multipart/form-data"
+          class="flex max-w-[560px] flex-col gap-lg"
+        >
+          <div class="flex flex-col gap-xs">
+            <label class={label} for="m-project">
+              Project
+            </label>
+            <select id="m-project" name="projectId" class={field}>
+              {projects.map((project) => (
+                <option value={project.id}>{project.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div class="flex flex-col gap-xs">
+            <label class={label} for="m-file">
+              Image
+            </label>
+            <input
+              id="m-file"
+              name="file"
+              type="file"
+              required
+              accept="image/jpeg,image/png,image/webp,image/avif"
+              class={field}
+              aria-describedby="m-file-help"
+            />
+            <p id="m-file-help" class="font-mono text-label-sm text-ink-muted">
+              JPEG, PNG, WebP or AVIF, up to 8 MB. The file is checked by its
+              contents, not its name.
+            </p>
+          </div>
+
+          <div class="flex flex-col gap-xs">
+            <label class={label} for="m-alt">
+              Alt text
+            </label>
+            <input
+              id="m-alt"
+              name="altText"
+              type="text"
+              required
+              maxlength="500"
+              class={field}
+              aria-describedby="m-alt-help"
+            />
+            <p id="m-alt-help" class="font-mono text-label-sm text-ink-muted">
+              Describe what the image shows. Required — it is what a screen
+              reader announces.
+            </p>
+          </div>
+
+          <div>
+            <Button type="submit">Upload</Button>
+          </div>
+        </form>
+      )
+    }
+  </section>
+
+  <section class="flex flex-col gap-md">
+    <h2 class="font-mono text-label-sm tracking-wide text-ink-muted uppercase">
+      Library
+    </h2>
+
+    {
+      library.length === 0 ? (
+        /* BRAND §8 — an invitation, not an apology. */
+        <p class="text-body-lg text-ink-muted">
+          Nothing uploaded yet. The first image becomes a project cover.
+        </p>
+      ) : (
+        <ul class="grid gap-md sm:grid-cols-2 lg:grid-cols-3">
+          {library.map((item) => (
+            <li class="flex flex-col gap-md rounded-lg border border-deep-teal/15 bg-card-face p-md card-shadow">
+              {item.widest && (
+                <img
+                  src={`/api/media/${item.widest.key}`}
+                  alt={item.altText}
+                  width={item.widest.width ?? undefined}
+                  height={item.widest.height ?? undefined}
+                  loading="lazy"
+                  decoding="async"
+                  class="h-auto w-full rounded"
+                />
+              )}
+
+              <p class="font-mono text-label-sm text-ink-muted">
+                {item.derivatives} derivatives · {kb(item.bytes)}
+              </p>
+
+              <form
+                method="POST"
+                action={actions.updateAltText}
+                class="flex flex-col gap-xs"
+              >
+                <input type="hidden" name="keyStem" value={item.stem} />
+                <label class={label} for={`alt-${item.stem}`}>
+                  Alt text
+                </label>
+                <input
+                  id={`alt-${item.stem}`}
+                  name="altText"
+                  type="text"
+                  required
+                  maxlength="500"
+                  class={field}
+                  value={item.altText}
+                />
+                <Button type="submit" variant="secondary">
+                  Save alt text
+                </Button>
+              </form>
+
+              {item.usedBy.length > 0 ? (
+                <p class="font-mono text-label-sm text-ink-muted">
+                  Used by {item.usedBy.join(", ")} — delete is blocked.
+                </p>
+              ) : (
+                <form method="POST" action={actions.deleteMedia}>
+                  <input type="hidden" name="keyStem" value={item.stem} />
+                  <Button type="submit" variant="secondary">
+                    Delete
+                  </Button>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
+</AdminLayout>

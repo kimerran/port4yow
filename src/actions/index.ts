@@ -3,6 +3,16 @@ import { ActionError, defineAction } from "astro:actions";
 // Astro 8. Importing from "astro/zod" is the supported path.
 import { z } from "astro/zod";
 import { AdminAuthError, assertAdmin, getDashboardStats } from "../lib/admin";
+import { isSameOrigin } from "../lib/origin";
+import { consume } from "../lib/ratelimit";
+import {
+  AssetInUse,
+  MAX_UPLOAD_BYTES,
+  UploadRejected,
+  deleteAssetGroup,
+  processUpload,
+  updateAltText as updateAssetAltText,
+} from "../lib/upload";
 
 /**
  * The Astro Actions foundation (SPEC §6, #26). Every admin mutation in Sprint 6
@@ -18,10 +28,25 @@ import { AdminAuthError, assertAdmin, getDashboardStats } from "../lib/admin";
  * the only check an action gets rather than a second one.
  */
 
-/** `assertAdmin`, with its failure mapped to the Actions error shape. */
+/**
+ * The two checks every mutating action needs, in one call that cannot be
+ * half-applied.
+ *
+ * #28 requires each mutation to re-check the session AND verify origin. Two
+ * separate helpers means an action can call one and miss the other, and the miss
+ * is invisible — everything works until someone posts cross-site. Folding them
+ * together makes forgetting impossible rather than merely unlikely.
+ *
+ * Origin first: a cross-site request should be refused before it can learn
+ * whether a session exists.
+ */
 export function requireAdmin(context: {
+  request: Request;
   locals: App.Locals;
 }): NonNullable<App.Locals["user"]> {
+  if (!isSameOrigin(context.request)) {
+    throw new ActionError({ code: "FORBIDDEN", message: "Forbidden." });
+  }
   try {
     return assertAdmin(context.locals);
   } catch (cause) {
@@ -30,6 +55,20 @@ export function requireAdmin(context: {
     }
     throw cause;
   }
+}
+
+/**
+ * Maps a domain refusal to the Actions error shape.
+ *
+ * `BAD_REQUEST`, not a 500: every one of these is "you asked for something the
+ * rules do not allow", which the form can render. A 500 would tell the admin the
+ * server broke when in fact it refused, and they would retry the same upload.
+ */
+function toActionError(cause: unknown): never {
+  if (cause instanceof UploadRejected || cause instanceof AssetInUse) {
+    throw new ActionError({ code: "BAD_REQUEST", message: cause.message });
+  }
+  throw cause;
 }
 
 export const server = {
@@ -48,6 +87,88 @@ export const server = {
     handler: async (_input, context) => {
       const user = requireAdmin(context);
       return getDashboardStats(user.id);
+    },
+  }),
+
+  /**
+   * Uploads one image (#28).
+   *
+   * `accept: "form"` so the file arrives as a real multipart upload from a form
+   * that needs no JavaScript. Every validation lives in `processUpload`, which
+   * reads the file's own bytes — nothing here trusts the filename or the
+   * client-supplied `Content-Type`.
+   */
+  uploadMedia: defineAction({
+    accept: "form",
+    input: z.object({
+      projectId: z.string().min(1),
+      altText: z.string().min(1).max(500),
+      file: z
+        .instanceof(File)
+        // The size check is repeated in processUpload against the bytes we
+        // actually read. This one refuses earlier, on the declared length, so an
+        // oversized body is not buffered any further than it already was.
+        .refine((file) => file.size <= MAX_UPLOAD_BYTES, {
+          message: "That file is larger than 8 MB.",
+        }),
+    }),
+    handler: async (input, context) => {
+      const user = requireAdmin(context);
+
+      /**
+       * SPEC §14.9 — 30 uploads/hour/session. Keyed on the user id rather than
+       * an IP: the limit is per SESSION in the spec, and an admin behind a
+       * changing IP should not get a fresh budget by reconnecting.
+       */
+      const limit = await consume("upload", user.id);
+      if (!limit.allowed) {
+        throw new ActionError({
+          code: "TOO_MANY_REQUESTS",
+          message: `That is a lot of uploads. Try again in ${String(Math.ceil(limit.retryAfterSeconds / 60))} minutes.`,
+        });
+      }
+
+      try {
+        const bytes = new Uint8Array(await input.file.arrayBuffer());
+        return await processUpload({
+          bytes,
+          projectId: input.projectId,
+          altText: input.altText,
+        });
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  updateAltText: defineAction({
+    accept: "form",
+    input: z.object({
+      keyStem: z.string().min(1).max(256),
+      altText: z.string().min(1).max(500),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        const updated = await updateAssetAltText(input.keyStem, input.altText);
+        return { updated };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  deleteMedia: defineAction({
+    accept: "form",
+    input: z.object({ keyStem: z.string().min(1).max(256) }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        const deleted = await deleteAssetGroup(input.keyStem);
+        return { deleted };
+      } catch (cause) {
+        return toActionError(cause);
+      }
     },
   }),
 };
