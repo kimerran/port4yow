@@ -23,7 +23,7 @@
     "typecheck": "astro check",
     "audit": "pnpm audit --audit-level=moderate",
     "postinstall": "prisma generate",
-    "test:integration": "RATELIMIT_IT=1 CONTACT_IT=1 vitest run src/lib/__tests__/ratelimit.integration.test.ts src/pages/api/__tests__/contact.integration.test.ts"
+    "test:integration": "RATELIMIT_IT=1 CONTACT_IT=1 LOGIN_IT=1 vitest run --no-file-parallelism src/lib/__tests__/ratelimit.integration.test.ts src/pages/api/__tests__/contact.integration.test.ts src/lib/__tests__/login.integration.test.ts"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.4",

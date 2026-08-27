@@ -1,0 +1,199 @@
+---
+import { z } from "zod";
+import Button from "../../components/Button.astro";
+import {
+  SESSION_COOKIE,
+  SESSION_COOKIE_OPTIONS,
+  rotateSession,
+} from "../../lib/auth";
+import { GENERIC_LOGIN_ERROR, attemptLogin } from "../../lib/login";
+import { logger, newCorrelationId } from "../../lib/logger";
+import { isSameOrigin } from "../../lib/origin";
+import { clientIpFrom, consume, hashIp } from "../../lib/ratelimit";
+import { safeNextPath } from "../../lib/redirect";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+/**
+ * The only authentication surface (SPEC §6, §8, #25).
+ *
+ * No signup, no password reset, no "remember me" — each of those is an extra
+ * account-recovery path on a single-user admin, and every one of them is a way
+ * in that nobody would be watching.
+ *
+ * GET renders the form; POST runs the pipeline. Both live here so the form works
+ * with JavaScript disabled: it is a native POST to its own URL, and there is no
+ * client script on this page at all.
+ *
+ * `/admin/login` is the one path under /admin/ that middleware does not guard —
+ * guarding it would redirect the login page to itself.
+ */
+const LoginSchema = z.object({
+  username: z.string().trim().min(1).max(64),
+  password: z.string().min(1).max(512),
+});
+
+const correlationId = newCorrelationId();
+
+let error: string | null = null;
+let submittedUsername = "";
+
+/**
+ * Set on success, redirected to at the end of the frontmatter.
+ *
+ * Not returned inline from inside the branch: `astro check` does not count an
+ * identifier used only inside a frontmatter `return` expression, and reports the
+ * import as unused (`ts(6133)`). Assigning first and returning afterwards keeps
+ * the gate at 0/0/0 without suppressing anything.
+ */
+let redirectTo: string | null = null;
+
+if (Astro.request.method === "POST") {
+  /**
+   * 1 · Origin. SPEC §14.4 wants an explicit check on every state-changing
+   * route, not just the framework backstop — and this one hands out sessions.
+   *
+   * Shared with /api/contact and logout. This route previously allowed a
+   * MISSING `Origin` while the contact form refused it: two answers to one
+   * threat, with the laxer one guarding the session issuer.
+   */
+  if (!isSameOrigin(Astro.request)) {
+    logger.warn("login rejected: cross-origin", {
+      correlation_id: correlationId,
+    });
+    return new Response(null, { status: 403 });
+  }
+
+  // 2 · IP rate limit — SPEC §8, 10 attempts / 15 min.
+  const ipHash = hashIp(clientIpFrom(Astro.request, Astro.clientAddress));
+  const limit = await consume("login", ipHash);
+
+  if (!limit.allowed) {
+    logger.warn("login rate limited", {
+      correlation_id: correlationId,
+      retry_after: limit.retryAfterSeconds,
+    });
+    Astro.response.status = 429;
+    Astro.response.headers.set("Retry-After", String(limit.retryAfterSeconds));
+    error = "Too many attempts. Try again in a few minutes.";
+  } else {
+    const form = await Astro.request.formData();
+    const parsed = LoginSchema.safeParse({
+      username: form.get("username") ?? "",
+      password: form.get("password") ?? "",
+    });
+
+    // 3-5 · Dummy verify, generic message and lockout all live in attemptLogin.
+    if (!parsed.success) {
+      Astro.response.status = 400;
+      error = GENERIC_LOGIN_ERROR;
+    } else {
+      submittedUsername = parsed.data.username;
+      const result = await attemptLogin(
+        parsed.data.username,
+        parsed.data.password,
+      );
+
+      if (result.ok) {
+        // 6 · Rotate the session id, destroying the presented one (#23).
+        const issued = await rotateSession(
+          Astro.cookies.get(SESSION_COOKIE)?.value,
+          result.userId,
+          {
+            ipHash,
+            userAgent: Astro.request.headers.get("user-agent"),
+          },
+        );
+
+        Astro.cookies.set(SESSION_COOKIE, issued.token, SESSION_COOKIE_OPTIONS);
+        logger.info("login succeeded", { correlation_id: correlationId });
+
+        /**
+         * Middleware has already stripped an unsafe `?next`, so anything still
+         * here is same-origin. Re-validated anyway: the value is about to be
+         * written into a `Location` header, and re-checking where it is used
+         * costs nothing. The form posts to its own URL, so the query string
+         * survives the round trip without a hidden field.
+         */
+        redirectTo =
+          safeNextPath(Astro.url.searchParams.get("next")) ?? "/admin";
+      }
+
+      // One message for every failure mode — SPEC §8.
+      Astro.response.status = 401;
+      error = GENERIC_LOGIN_ERROR;
+    }
+  }
+}
+
+if (redirectTo !== null) return Astro.redirect(redirectTo, 303);
+
+const field =
+  "min-h-11 w-full rounded border border-outline-variant bg-card-face px-md py-sm text-body-md text-ink-navy";
+const label = "font-mono text-label-sm text-ink-muted";
+---
+
+<BaseLayout title="Sign in — mh.neri.ph" description="Admin sign in.">
+  <section class="flex flex-col items-start gap-lg py-2xl">
+    <h1 class="font-display text-headline-lg">Sign in</h1>
+
+    <form
+      method="POST"
+      class="flex w-full max-w-[420px] flex-col gap-lg"
+      novalidate
+    >
+      {
+        /* One live region for the whole form, present from first render — a
+           region added to the page at the moment it gains text is frequently
+           not announced (BRAND §9). */
+      }
+      <p
+        class="text-[14px] text-error"
+        id="login-error"
+        role="status"
+        aria-live="polite"
+      >
+        {error}
+      </p>
+
+      <div class="flex flex-col gap-xs">
+        <label class={label} for="login-username">Username</label>
+        <input
+          id="login-username"
+          name="username"
+          type="text"
+          required
+          maxlength="64"
+          autocomplete="username"
+          value={submittedUsername}
+          class:list={[field, error && "border-error"]}
+          aria-describedby="login-error"
+          aria-invalid={error ? "true" : undefined}
+        />
+      </div>
+
+      <div class="flex flex-col gap-xs">
+        <label class={label} for="login-password">Password</label>
+        {
+          /* Never re-populated, even on failure: a password echoed into a value
+             attribute lands in the page source, the bfcache and any proxy that
+             logs bodies. */
+        }
+        <input
+          id="login-password"
+          name="password"
+          type="password"
+          required
+          maxlength="512"
+          autocomplete="current-password"
+          class:list={[field, error && "border-error"]}
+          aria-describedby="login-error"
+          aria-invalid={error ? "true" : undefined}
+        />
+      </div>
+
+      <div>
+        <Button type="submit" class="w-full sm:w-auto">Sign in</Button>
+      </div>
+    </form>
+  </section>
+</BaseLayout>

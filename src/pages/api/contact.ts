@@ -1,9 +1,9 @@
 import type { APIRoute } from "astro";
 import { z } from "zod";
 import { db } from "../../lib/db";
-import { env } from "../../lib/env";
 import { verifyFormToken } from "../../lib/formToken";
 import { logger, newCorrelationId } from "../../lib/logger";
+import { isSameOrigin } from "../../lib/origin";
 import { sendContactEmail } from "../../lib/mail";
 import { clientIpFrom, consume, hashIp } from "../../lib/ratelimit";
 
@@ -68,32 +68,6 @@ const json = (
     },
   });
 
-/**
- * SPEC §7 step 1 — `Origin`/`Referer` must be our own site.
- *
- * `security.checkOrigin` is on in astro.config.mjs, but SPEC §14.4 asks for an
- * explicit per-route check as well: the framework setting is a backstop that a
- * future config change could silently remove, and this is a state-changing
- * handler that also sends email.
- *
- * A missing Origin AND missing Referer is refused rather than allowed. Browsers
- * send `Origin` on cross-origin POSTs, so absence means a non-browser client —
- * which has no business posting this form (AGENT §1.5, fail closed).
- */
-function originAllowed(request: Request): boolean {
-  const expected = new URL(env.PUBLIC_SITE_URL).origin;
-  const origin = request.headers.get("origin");
-  if (origin) return origin === expected;
-
-  const referer = request.headers.get("referer");
-  if (!referer) return false;
-  try {
-    return new URL(referer).origin === expected;
-  } catch {
-    return false;
-  }
-}
-
 /** Accepts JSON, urlencoded and multipart — #21's two paths send the latter two. */
 async function readBody(request: Request): Promise<Record<string, string>> {
   const contentType = request.headers.get("content-type") ?? "";
@@ -119,8 +93,8 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   const correlationId = newCorrelationId();
 
   try {
-    // 1 · Origin.
-    if (!originAllowed(request)) {
+    // 1 · Origin — shared with login and logout so the three cannot drift.
+    if (!isSameOrigin(request)) {
       logger.warn("contact rejected: cross-origin", {
         correlation_id: correlationId,
       });
