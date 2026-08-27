@@ -6,6 +6,7 @@ import ContactForm from "../components/ContactForm.astro";
 import RankIndex from "../components/RankIndex.astro";
 import SuitGlyph from "../components/SuitGlyph.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
+import JsonLd from "../components/JsonLd.astro";
 import { getHomeData } from "../lib/home";
 import { SUIT_CATEGORY } from "../lib/suits";
 
@@ -22,11 +23,42 @@ const about = settings["about.body"] ?? "";
 const github = settings["social.github"];
 const linkedin = settings["social.linkedin"];
 
+/**
+ * `Person` JSON-LD (SPEC §15, #34).
+ *
+ * The home page is about a person, not an organisation — `Person` is what makes
+ * a name, a job title and a set of profiles legible to a search engine as one
+ * identity rather than as words on a page.
+ *
+ * `sameAs` carries the social links, which is the property that lets a search
+ * engine connect this page to those profiles. Empty entries are dropped rather
+ * than emitted blank: #31 stores "" for "no link", and a `sameAs` containing an
+ * empty string is worse than an absent one.
+ *
+ * The escaping that makes `set:html` safe here lives in JsonLd.astro (#15), so
+ * this file never touches raw HTML.
+ */
+const sameAs = [github, linkedin].filter(
+  (url): url is string => typeof url === "string" && url.length > 0,
+);
+
+const personJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Person",
+  name: "Mark Hugh Neri",
+  jobTitle: "Full-stack engineer",
+  url: new URL("/", Astro.site ?? Astro.url).href,
+  ...(thesis ? { description: thesis } : {}),
+  ...(sameAs.length > 0 ? { sameAs } : {}),
+};
+
 // The hero card's stack list: featured items, in seed order.
 const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
 ---
 
 <BaseLayout title="Mark Hugh Neri — full-stack engineer" description={thesis}>
+  <JsonLd data={personJsonLd} />
+
   {
     /* ---- Hero (no rank; BRAND §6 ranks start at Selected work) ----
       Row only at lg. At md the display face jumps to 96px (BRAND §3) while the

@@ -16,11 +16,34 @@ interface Props {
   title: string;
   description: string;
   /** Absolute URL for canonical + OG. Falls back to the current request URL. */
-  canonical?: string;
-  ogImage?: string;
+  canonical?: string | undefined;
+  /**
+   * `| undefined` explicitly: with `exactOptionalPropertyTypes`, an optional
+   * prop and a prop that may be passed as `undefined` are different types, and
+   * every caller computing this from nullable data produces the latter.
+   */
+  ogImage?: string | undefined;
+  /** Alt text for the OG image — scrapers surface it, so it is not optional in practice. */
+  ogImageAlt?: string | undefined;
+  /**
+   * `website` for the home page, `article` for a project.
+   *
+   * It was hardcoded to `website` everywhere, which told every scraper that a
+   * project page was a site rather than a piece of writing — and the Article
+   * JSON-LD on that same page said otherwise. Two answers to one question is
+   * worse than either answer.
+   */
+  ogType?: "website" | "article";
 }
 
-const { title, description, canonical, ogImage } = Astro.props;
+const {
+  title,
+  description,
+  canonical,
+  ogImage,
+  ogImageAlt,
+  ogType = "website",
+} = Astro.props;
 
 const canonicalUrl =
   canonical ?? new URL(Astro.url.pathname, Astro.site ?? Astro.url).href;
@@ -43,11 +66,18 @@ const ogImageUrl = ogImage
     <meta name="description" content={description} />
     <link rel="canonical" href={canonicalUrl} />
 
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />
     {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
+    {
+      /* A scraper renders this as the image's description; omitting it makes the
+         card an unlabelled picture for anyone using a screen reader on it. */
+      ogImageUrl && ogImageAlt && (
+        <meta property="og:image:alt" content={ogImageAlt} />
+      )
+    }
 
     <meta
       name="twitter:card"
