@@ -40,6 +40,13 @@ first verification of this fix was invalid for exactly that reason: it reported 
 with a hardcoded `server.port`, which looked like the fix failing. Stop it explicitly with
 `astro dev stop` between runs, or every port test after the first is meaningless.
 
+Wiring `process.env` into a `// @ts-check`'d `astro.config.mjs` also required
+**`@types/node`** (26.4.0) — without it `astro check` fails with
+`ts(2580): Cannot find name 'process'`. My first push of this fix claimed the gate was
+still clean when it was not: a too-narrow `grep` over the `astro check` output hid the
+error line. Corrected in the following commit. Read the whole `Result` block, not a
+filtered line.
+
 Re-verified from a clean stop each time: `PORT=5055` → 200 on 5055; `PORT=6123` → 200 on
 6123; `PORT` unset → 4321; `PORT=5056 node ./dist/server/entry.mjs` → 200 on 5056.
 
