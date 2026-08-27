@@ -162,6 +162,16 @@ export default defineConfig(
     },
   },
 
+  {
+    // Test files CONSTRUCT an environment rather than consuming configuration:
+    // src/lib/env.ts parses at import and throws without a valid fixture, so a
+    // suite must populate process.env before importing anything that reads it.
+    // Narrow, deliberate exception to the AGENT §3 ban — application code has no
+    // such need and stays covered.
+    files: ["**/__tests__/**/*.ts", "**/*.{test,spec}.ts"],
+    rules: { "no-restricted-properties": "off" },
+  },
+
   // Must stay last: turns off every rule Prettier owns.
   prettier,
 );
