@@ -115,15 +115,24 @@ runs totals **125 MB — 26%**, three times more.
 review expected the cause to be, and it is worth being exact because the wrong
 cause suggests the wrong fix. `prisma` is an _optional peer_ of
 `@prisma/client`, so that hypothesis is reasonable — it just does not hold.
-Built both ways:
+Built three ways:
 
-| Production install            | `node_modules` | `prisma` CLI | `studio-core` / `@prisma/dev` / rolldown |
-| ----------------------------- | -------------- | ------------ | ---------------------------------------- |
-| `prisma` in `dependencies`    | **482 MB**     | present      | present                                  |
-| `prisma` in `devDependencies` | **482 MB**     | absent       | **present**                              |
+| Production install                                                   | `node_modules` | `.pnpm` entries | `prisma` CLI | tooling (`studio-core`, rolldown, pglite) |
+| -------------------------------------------------------------------- | -------------- | --------------- | ------------ | ----------------------------------------- |
+| `prisma` in `dependencies`, `--frozen-lockfile` (**the Dockerfile**) | 482 MB         | 424             | present      | present                                   |
+| `prisma` in `devDependencies`, `--frozen-lockfile`                   | 482 MB         | 424             | absent       | **present**                               |
+| `prisma` in `devDependencies`, re-resolved                           | 419 MB         | 422             | absent       | **present**                               |
 
-Identical, with the heavy packages there either way. Reverting the dependency
-move would cost the container its migration step and save nothing.
+Two readings of the same question, and both are right — the difference is
+`--frozen-lockfile`, not the dependency field. Moving `prisma` changes
+`package.json`'s `dependencies`, which a frozen lockfile refuses, so measuring
+the move _and_ honouring the lockfile are mutually exclusive. Under the
+Dockerfile exactly as written the move costs **0 MB**; let pnpm re-resolve as
+well and it costs about **63 MB**, the CLI and what only it uses.
+
+Neither figure is the 125 MB of tooling: `studio-core`, the Rolldown binary and
+pglite are present in **all three**. Reverting the dependency move would cost
+the container its migration step and leave them exactly where they are.
 
 **The actual cause is the install shape.** The image links **17** packages at
 the top level and materialises **424** into `node_modules/.pnpm` — the whole
