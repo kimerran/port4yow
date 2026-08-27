@@ -27,6 +27,22 @@ The application shell builds, typechecks, and serves. Verified by running, not b
   `prisma/migrations`, `public`, `docs`.
 - `SPEC.md`, `BRAND.md`, `AGENT.md` moved to `docs/` via `git mv` (history preserved).
 
+## Review follow-up — `PORT` in dev (round 1)
+
+`pnpm dev` ignored `PORT`, failing acceptance box 3 on #1. Fixed by wiring
+`server: { port: Number(process.env.PORT ?? 4321) }` in `astro.config.mjs`. Production was
+never affected — the standalone adapter reads `process.env.PORT` at runtime (SPEC §13).
+
+**Trap worth knowing: Astro 7 daemonizes the dev server.** `astro dev` detaches, so killing
+the `pnpm` wrapper leaves it listening — the next start prints *"Dev server already running
+at http://localhost:4321"* and silently serves the **old** config on the **old** port. My
+first verification of this fix was invalid for exactly that reason: it reported 4321 even
+with a hardcoded `server.port`, which looked like the fix failing. Stop it explicitly with
+`astro dev stop` between runs, or every port test after the first is meaningless.
+
+Re-verified from a clean stop each time: `PORT=5055` → 200 on 5055; `PORT=6123` → 200 on
+6123; `PORT` unset → 4321; `PORT=5056 node ./dist/server/entry.mjs` → 200 on 5056.
+
 ## Decisions
 
 - **TypeScript pinned to 5.9.3, not 7.0.2.** AGENT §1.1 says install `@latest`; SPEC §2's
