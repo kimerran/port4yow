@@ -4,7 +4,7 @@ import {
   SESSION_COOKIE_OPTIONS,
   validateSession,
 } from "./lib/auth";
-import { logger } from "./lib/logger";
+import { logger, newCorrelationId } from "./lib/logger";
 import { safeNextPath } from "./lib/redirect";
 
 /**
@@ -72,6 +72,24 @@ function applySecurityHeaders(response: Response, pathname: string): Response {
   if (isAdminPage(pathname) || isAdminApi(pathname)) {
     response.headers.set("Cache-Control", "no-store");
     response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
+
+  /**
+   * #43 — an error response with no `Cache-Control` is *heuristically*
+   * cacheable, and a 404 is the shape where that bites.
+   *
+   * `/work/<slug>` rewrites to `/404` for a DRAFT project (#18). Those 404s
+   * carried no cache header at all, so a shared cache is free to invent a
+   * freshness lifetime for them — and the visitor who happens to load a project
+   * page the hour before it is published can keep seeing "that card isn't in the
+   * deck" after it goes live. Publishing something and having it stay invisible
+   * is the kind of failure nobody reports as a bug.
+   *
+   * Only when nothing has been set: a route that has thought about its own
+   * caching wins, which is why this reads before it writes.
+   */
+  if (response.status >= 400 && !response.headers.has("Cache-Control")) {
+    response.headers.set("Cache-Control", "no-store");
   }
 
   return response;
@@ -168,7 +186,54 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
     }
   }
 
-  const response = await next();
+  /**
+   * #43 — `next()` throwing used to skip `applySecurityHeaders` entirely.
+   *
+   * Found by the sweep, not by reasoning: a malformed JSON body to any Astro
+   * Action makes the framework's own `request.json()` reject, and the adapter
+   * answered **500 with not one security header on it** — no HSTS, no
+   * `nosniff`, no CSP, no `Referrer-Policy`. Anonymous and cross-origin, because
+   * the parse happens before the action's `requireAdmin` ever runs.
+   *
+   * The body was empty, so nothing leaked *that* time. The problem is the class:
+   * every uncaught throw anywhere in the app produced an unprotected response,
+   * and the first 500 that renders anything would render it without a CSP. The
+   * headers belong to the response, so the response must always be ours.
+   *
+   * The stack also went to Astro's own console error path rather than through
+   * `logger`, so it skipped redaction and carried no correlation id — SPEC
+   * §14.11 wants the opposite of both.
+   */
+  let response: Response;
+  try {
+    response = await next();
+  } catch (cause) {
+    const correlationId = newCorrelationId();
+    logger.error("unhandled error", {
+      correlationId,
+      path: pathname,
+      reason: cause instanceof Error ? cause.message : "unknown",
+    });
+    // Generic, brand-voiced, and carrying the id from the log line so a report
+    // can be traced (SPEC §14.11). No stack, no framework name, no SQL.
+    return applySecurityHeaders(
+      new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Something went wrong on our end.",
+          correlationId,
+        }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+          },
+        },
+      ),
+      pathname,
+    );
+  }
 
   /**
    * Sliding expiry only reaches the browser if the cookie is re-sent. Without
