@@ -34,8 +34,8 @@ The application shell builds, typechecks, and serves. Verified by running, not b
 never affected — the standalone adapter reads `process.env.PORT` at runtime (SPEC §13).
 
 **Trap worth knowing: Astro 7 daemonizes the dev server.** `astro dev` detaches, so killing
-the `pnpm` wrapper leaves it listening — the next start prints *"Dev server already running
-at http://localhost:4321"* and silently serves the **old** config on the **old** port. My
+the `pnpm` wrapper leaves it listening — the next start prints _"Dev server already running
+at http://localhost:4321"_ and silently serves the **old** config on the **old** port. My
 first verification of this fix was invalid for exactly that reason: it reported 4321 even
 with a hardcoded `server.port`, which looked like the fix failing. Stop it explicitly with
 `astro dev stop` between runs, or every port test after the first is meaningless.
