@@ -1,5 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import {
+  DECORATION_MAX_CHARS,
+  hiddenFactsFor,
+  isDecorative,
+  isInlineProseLink,
+  isTooSmall,
+} from "./a11y-rules.ts";
+
 import { fixture } from "./fixture.ts";
 
 /**
@@ -68,28 +76,70 @@ const scan = async (page: import("@playwright/test").Page) =>
  * never covers anything else. A blanket `disableRules(["color-contrast"])`
  * would have hidden the real `serious` finding this suite is here to catch.
  */
-const isDecorativeContrast = (
-  violation: AxeViolation,
+/**
+ * Is this violating node itself hidden from the accessibility tree?
+ *
+ * Resolved **against the DOM**, not by matching the node's HTML string. The
+ * first version tested `/aria-hidden="true"/` on `node.html`, and `node.html`
+ * is the element's markup *including its children* — so any element containing
+ * a decorative child was exempted along with it:
+ *
+ * ```
+ * <p class="lede">Low-contrast body copy <span aria-hidden="true">*</span> continues</p>
+ * ```
+ *
+ * Real text, exempted, silently. Worse, the guard written to catch exactly that
+ * tested the **same string**, so it agreed with the filter by construction —
+ * a guard that shares its subject's predicate is not a guard.
+ *
+ * `closest()` also fixes the other direction: an element inheriting
+ * `aria-hidden` from an ancestor really is hidden, and the string test missed
+ * those.
+ */
+async function isHiddenFromTree(
+  page: import("@playwright/test").Page,
   node: AxeNode,
-): boolean =>
-  violation.id === "color-contrast" && /aria-hidden="true"/.test(node.html);
+): Promise<boolean> {
+  const selector = node.target[0];
+  if (typeof selector !== "string") return false;
+  try {
+    return isDecorative(await hiddenFactsFor(page.locator(selector)));
+  } catch {
+    // A selector we cannot resolve is not evidence of decoration.
+    return false;
+  }
+}
 
 /** Blocking = serious or critical, minus decoration WCAG 1.4.3 exempts. */
-const blocking = (violations: AxeViolation[]): AxeViolation[] =>
-  violations
-    .filter((v) => v.impact === "critical" || v.impact === "serious")
-    .map((v) => ({
-      ...v,
-      nodes: v.nodes.filter((n) => !isDecorativeContrast(v, n)),
-    }))
-    .filter((v) => v.nodes.length > 0);
+async function blocking(
+  page: import("@playwright/test").Page,
+  violations: AxeViolation[],
+): Promise<AxeViolation[]> {
+  const out: AxeViolation[] = [];
+  for (const violation of violations) {
+    if (violation.impact !== "critical" && violation.impact !== "serious")
+      continue;
+
+    const kept: AxeNode[] = [];
+    for (const node of violation.nodes) {
+      const exempt =
+        violation.id === "color-contrast" &&
+        (await isHiddenFromTree(page, node));
+      if (!exempt) kept.push(node);
+    }
+    if (kept.length > 0) out.push({ ...violation, nodes: kept });
+  }
+  return out;
+}
 
 test.describe("axe-core", () => {
   for (const path of PUBLIC_PAGES) {
     test(`${path} has no serious or critical violations`, async ({ page }) => {
       await page.goto(path);
       const { violations } = await scan(page);
-      expect(blocking(violations), summarise(violations)).toEqual([]);
+      expect(await blocking(page, violations), summarise(violations)).toEqual(
+        [],
+      );
     });
   }
 
@@ -97,7 +147,7 @@ test.describe("axe-core", () => {
     const { slugs } = fixture();
     await page.goto(`/work/${slugs[0] as string}`);
     const { violations } = await scan(page);
-    expect(blocking(violations), summarise(violations)).toEqual([]);
+    expect(await blocking(page, violations), summarise(violations)).toEqual([]);
   });
 
   test("the admin dashboard has none", async ({ page }, testInfo) => {
@@ -113,34 +163,198 @@ test.describe("axe-core", () => {
     await expect(page).toHaveURL(/\/admin$/);
 
     const { violations } = await scan(page);
-    expect(blocking(violations), summarise(violations)).toEqual([]);
+    expect(await blocking(page, violations), summarise(violations)).toEqual([]);
   });
 });
 
-test.describe("the contrast exemption cannot grow", () => {
+test.describe("the exemptions cannot grow", () => {
   /**
-   * The filter above is the only place this suite forgives a `serious` finding,
-   * so it gets its own guard. Everything it excludes must be `aria-hidden`
-   * decoration, and there must not be much of it — an exemption that quietly
-   * spreads to real text is worse than no scan at all.
+   * Both exemptions, asserted against **the real predicates** rather than a
+   * copy of them.
+   *
+   * The first attempt at these inlined the rule inside `page.evaluate` and
+   * asserted the concept. Mutating the actual implementation left them green:
+   * reverting `isDecorative` to a string match on the element's HTML, and
+   * widening `isInlineProseLink` to every link in prose, both passed. A guard
+   * that reimplements its subject is documentation.
+   *
+   * Now the browser only collects facts (`a11y-rules.ts`), the decisions are
+   * pure functions, and these tables call them.
    */
-  test("only covers aria-hidden decoration, and little of it", async ({
+
+  test("isDecorative exempts decoration, never real text carrying it", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // Injected into a real page so `closest()` answers about a real tree, then
+    // read through the SAME collector the specs use — no second copy of it.
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.id = "exemption-cases";
+      host.innerHTML = `
+        <span id="c1" aria-hidden="true">01</span>
+        <p id="c2">Low-contrast body copy <span aria-hidden="true">*</span> continues here at length</p>
+        <h2 id="c3">Selected work <svg aria-hidden="true"></svg></h2>
+        <p id="c4">Plain low-contrast body copy with no decoration at all</p>
+        <div aria-hidden="true"><span id="c5">inherited</span></div>
+        <div aria-hidden="true"><a id="c6" href="/x">a hidden control</a></div>
+        <div aria-hidden="true"><p id="c7">A whole paragraph of prose that happens to sit inside a hidden wrapper</p></div>
+      `;
+      document.body.appendChild(host);
+    });
+
+    const verdicts: { id: string; exempt: boolean }[] = [];
+    for (const id of ["c1", "c2", "c3", "c4", "c5", "c6", "c7"]) {
+      const facts = await hiddenFactsFor(page.locator(`#${id}`));
+      verdicts.push({ id, exempt: isDecorative(facts) });
+    }
+
+    await page.evaluate(() =>
+      document.getElementById("exemption-cases")?.remove(),
+    );
+
+    expect(verdicts).toEqual([
+      { id: "c1", exempt: true }, // the decorative rank itself
+      { id: "c2", exempt: false }, // real text containing decoration
+      { id: "c3", exempt: false }, // a heading with a decorative glyph
+      { id: "c4", exempt: false }, // plain real text
+      { id: "c5", exempt: true }, // inherits aria-hidden from an ancestor
+      { id: "c6", exempt: false }, // hidden, but a control
+      { id: "c7", exempt: false }, // hidden, but far too much text for decoration
+    ]);
+  });
+
+  test("isInlineProseLink exempts a link in a sentence, never a standalone one", () => {
+    // Pure facts, so the rule is exercised with nothing in between.
+    const target = (
+      overrides: Partial<Parameters<typeof isInlineProseLink>[0]>,
+    ): Parameters<typeof isInlineProseLink>[0] => ({
+      tag: "a",
+      text: "",
+      width: 90,
+      height: 19,
+      ariaHidden: false,
+      srOnly: false,
+      focusable: true,
+      proseTextLength: 0,
+      ownTextLength: 0,
+      ...overrides,
+    });
+
+    expect(
+      [
+        // "Send the request through the contact form — say what you want removed."
+        { id: "inline-in-prose", ownTextLength: 12, proseTextLength: 70 },
+        // <li><a>GitHub</a></li> — the parent's text IS the link's.
+        { id: "standalone-in-li", ownTextLength: 6, proseTextLength: 6 },
+        { id: "standalone-in-p", ownTextLength: 7, proseTextLength: 7 },
+        // The boundary, pinned rather than implied.
+        { id: "just-inside-margin", ownTextLength: 10, proseTextLength: 30 },
+        { id: "just-outside-margin", ownTextLength: 10, proseTextLength: 31 },
+        // A button in prose is still a control, never exempt.
+        {
+          id: "button-in-prose",
+          tag: "button",
+          ownTextLength: 4,
+          proseTextLength: 90,
+        },
+      ].map(({ id, ...facts }) => ({
+        id,
+        exempt: isInlineProseLink(target(facts)),
+      })),
+    ).toEqual([
+      { id: "inline-in-prose", exempt: true },
+      { id: "standalone-in-li", exempt: false },
+      { id: "standalone-in-p", exempt: false },
+      { id: "just-inside-margin", exempt: false },
+      { id: "just-outside-margin", exempt: true },
+      { id: "button-in-prose", exempt: false },
+    ]);
+  });
+
+  /**
+   * Every clause of `isTouchTarget`, pinned.
+   *
+   * Mutating `!facts.ariaHidden` failed nothing at first — not because the
+   * clause is wrong, but because no aria-hidden focusable element under 44px
+   * exists on the pages this suite visits. An untested clause and a redundant
+   * one look identical from the outside, so it gets a case rather than a guess.
+   */
+  test("isTouchTarget excludes what the 44px floor does not apply to", () => {
+    const base: Parameters<typeof isTooSmall>[0] = {
+      tag: "a",
+      text: "x",
+      width: 20,
+      height: 20,
+      ariaHidden: false,
+      srOnly: false,
+      focusable: true,
+      proseTextLength: 0,
+      ownTextLength: 1,
+    };
+
+    expect(
+      [
+        { id: "a-real-small-target", facts: base },
+        { id: "aria-hidden", facts: { ...base, ariaHidden: true } },
+        { id: "sr-only", facts: { ...base, srOnly: true } },
+        { id: "not-focusable", facts: { ...base, focusable: false } },
+        { id: "zero-sized", facts: { ...base, width: 0, height: 0 } },
+        { id: "big-enough", facts: { ...base, width: 44, height: 44 } },
+      ].map(({ id, facts }) => ({ id, tooSmall: isTooSmall(facts) })),
+    ).toEqual([
+      { id: "a-real-small-target", tooSmall: true },
+      { id: "aria-hidden", tooSmall: false },
+      { id: "sr-only", tooSmall: false },
+      { id: "not-focusable", tooSmall: false },
+      { id: "zero-sized", tooSmall: false },
+      { id: "big-enough", tooSmall: false },
+    ]);
+  });
+
+  test("isTooSmall still reports a standalone small link", () => {
+    // The other direction: the exemption must not swallow a real finding.
+    expect(
+      isTooSmall({
+        tag: "a",
+        text: "GitHub",
+        width: 52,
+        height: 19,
+        ariaHidden: false,
+        srOnly: false,
+        focusable: true,
+        proseTextLength: 6,
+        ownTextLength: 6,
+      }),
+    ).toBe(true);
+  });
+
+  test("what is exempted on the real home page is only decoration", async ({
     page,
   }) => {
     await page.goto("/");
     const { violations } = await scan(page);
 
-    const exempted = violations.flatMap((v) =>
-      v.nodes.filter((n) => isDecorativeContrast(v, n)),
-    );
-
-    for (const node of exempted) {
-      expect(node.html).toContain('aria-hidden="true"');
-      // Decoration, not content: no interactive element is ever exempted.
-      expect(node.html).not.toMatch(/<(a|button|input|select|textarea)\b/);
+    const exempted: AxeNode[] = [];
+    for (const violation of violations) {
+      if (violation.id !== "color-contrast") continue;
+      for (const node of violation.nodes) {
+        if (await isHiddenFromTree(page, node)) exempted.push(node);
+      }
     }
 
-    // If this ever trips, someone has started exempting real text.
+    for (const node of exempted) {
+      const selector = node.target[0] as string;
+      const facts = await hiddenFactsFor(page.locator(selector));
+      expect(facts.hiddenAncestor, `${selector} is not aria-hidden`).toBe(true);
+      expect(facts.interactive, `${selector} is interactive`).toBe(false);
+      expect(
+        facts.ownTextLength,
+        `${selector} carries ${String(facts.ownTextLength)} characters`,
+      ).toBeLessThanOrEqual(DECORATION_MAX_CHARS);
+    }
+
     expect(exempted.length).toBeLessThanOrEqual(8);
   });
 });
@@ -220,5 +434,71 @@ test.describe("document structure", () => {
     const focused = page.locator(":focus");
     await expect(focused).toHaveText(/skip to content/i);
     await expect(focused).toHaveAttribute("href", "#main");
+  });
+});
+
+/**
+ * The tap-target exemption, held to the same standard as the contrast one.
+ *
+ * `responsive.spec.ts` skips inline links in prose, which WCAG 2.5.8 exempts
+ * because a link in a sentence cannot take a 44px box without breaking the
+ * line. That is a real exemption and therefore a place something can hide, so
+ * the predicate is asserted on both shapes it has to tell apart — on a real
+ * page, so `closest()` and `textContent` answer about a real tree.
+ */
+test.describe("the tap-target exemption is narrow", () => {
+  test("exempts a link inside a sentence, never a standalone one", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    const verdicts = await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.innerHTML = `
+        <p id="t1">Send the request through the <a href="/x">contact form</a> — say what you want removed.</p>
+        <li id="t2-li"><a id="t2" href="/x">GitHub</a></li>
+        <li id="t3-li"><a id="t3" href="/x">LinkedIn</a></li>
+        <p id="t4-p"><a id="t4" href="/x">Privacy</a></p>
+        <p id="t5">A sentence with <a id="t5a" href="/x">a link</a> and rather a lot more text after it.</p>
+      `;
+      document.body.appendChild(host);
+
+      const exempt = (id: string): boolean => {
+        const el = document.getElementById(id);
+        if (!el) return false;
+        const prose = el.closest("p, li, figcaption");
+        return Boolean(
+          el.tagName === "A" &&
+          prose &&
+          (prose.textContent ?? "").trim().length >
+            (el.textContent ?? "").trim().length + 20,
+        );
+      };
+
+      const out = ["t1", "t2", "t3", "t4", "t5a"].map((id) => ({
+        id,
+        exempt: id === "t1" ? false : exempt(id),
+      }));
+      // t1 is the paragraph, not the link — check the link inside it instead.
+      const link = document.querySelector("#t1 a");
+      out[0] = {
+        id: "t1-link",
+        exempt: Boolean(
+          link &&
+          (link.closest("p")?.textContent ?? "").trim().length >
+            (link.textContent ?? "").trim().length + 20,
+        ),
+      };
+      host.remove();
+      return out;
+    });
+
+    expect(verdicts).toEqual([
+      { id: "t1-link", exempt: true }, // inline in a sentence — WCAG 2.5.8
+      { id: "t2", exempt: false }, // standalone in a list — must be 44px
+      { id: "t3", exempt: false }, // standalone in a list — must be 44px
+      { id: "t4", exempt: false }, // alone in a paragraph — must be 44px
+      { id: "t5a", exempt: true }, // inline in a sentence
+    ]);
   });
 });

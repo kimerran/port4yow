@@ -151,6 +151,86 @@ Mutations against the two product fixes:
 Gate: `typecheck` 0 errors / 0 warnings / 0 hints · `lint` PASS · `test` **530
 passed, 115 skipped** · `test:integration` **115 passed** · `build` PASS.
 
+## Review round 2 — the exemption was over-applying, and its guard could not see it
+
+The review found that `isDecorativeContrast` tested `/aria-hidden="true"/` on
+`node.html`, and `node.html` is the element's markup **including its children**.
+So real text was exempted whenever it happened to contain a decorative child:
+
+```
+<p class="lede">Low-contrast body copy <span aria-hidden="true">*</span> continues</p>
+```
+
+Correct, and the sharper half of the point is that **the guard could not catch
+it**: "the contrast exemption cannot grow" asserted the same string the filter
+had just tested, so it agreed by construction. A guard that shares its subject's
+predicate is not a guard.
+
+Not observed on the current pages — the exemption today is still the four
+decorative nodes — so this was latent, exactly as the review said.
+
+### Resolved against the DOM, not the markup string
+
+`el.closest('[aria-hidden="true"]')` fixes all four of the review's rows and the
+one it noted in the other direction: an element inheriting `aria-hidden` from an
+ancestor really is hidden, and the string test missed those.
+
+### The deeper problem: my fix had the same flaw
+
+Both exemptions had a case-table test that **inlined a copy of the rule** rather
+than calling it. Mutating the real implementation left both green:
+
+| Mutation                                         | Before restructuring |
+| ------------------------------------------------ | -------------------- |
+| revert `isDecorative` to a string match          | **0 tests fail**     |
+| widen `isInlineProseLink` to every link in prose | **0 tests fail**     |
+
+The tables asserted the _concept_ while the _implementation_ went unmeasured —
+the review's criticism, one level up, in my own fix for it.
+
+So `e2e/a11y-rules.ts` now holds the decisions as pure functions. The browser
+only collects facts; the specs and the case tables both call the same rules.
+One constraint shaped it: sharing a collector by shipping its source into the
+page needs `new Function`, which is on AGENT §3's never-list and lint enforces
+that — so it is one `locator.evaluate` per element instead. A page has a few
+dozen controls; that costs nothing worth a banned construct.
+
+### Tap targets now visit every page
+
+Also from the review: the check only visited `/`. It now covers `/`, `/privacy`,
+`/404`, a project detail page and the admin dashboard — and immediately found one
+the home-page-only version could not: **`/privacy` has a 93×19 "contact form"
+link**, inline in a sentence.
+
+That one is a genuine WCAG 2.5.8 exemption — a link in running prose cannot take
+a 44px box without breaking the line. But after a review about an exemption that
+over-applied, it does not get added on my say-so: `isInlineProseLink` requires
+the enclosing text to be **substantially longer** than the link's own, so
+`<li><a>GitHub</a></li>` is not exempted, and the three real home-page findings
+still fail without their `min-h-11`.
+
+### Mutations, after the restructuring
+
+| Mutation                                                             | Tests failed |
+| -------------------------------------------------------------------- | ------------ |
+| `isDecorative`: string match instead of the DOM                      | 2            |
+| `isDecorative`: drop the 24-character length cap                     | 2            |
+| `isDecorative`: `closest()` instead of `matches()` for interactivity | 2            |
+| `isInlineProseLink`: exempt every link in prose                      | 4            |
+| `isTouchTarget`: stop skipping `sr-only`                             | 7            |
+| `isTouchTarget`: stop skipping `aria-hidden`                         | 2            |
+| `isTouchTarget`: drop the inline-prose exemption                     | 1            |
+| comment-only change (control)                                        | **0**        |
+
+Two of those needed a second pass of their own. `!facts.ariaHidden` survived
+first time — not because the clause is wrong, but because no aria-hidden
+focusable element under 44px exists on these pages. An untested clause and a
+redundant one look identical from outside, so every clause of `isTouchTarget`
+now has a case rather than a guess.
+
+Full suite after: **101 passed, 10 skipped** (the skips are the 44px checks at
+768 and 1440, which is a touch requirement).
+
 ## Blocked
 
 Nothing.

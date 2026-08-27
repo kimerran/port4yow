@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { fixture } from "./fixture.ts";
+import { isTooSmall, tapTargetFactsFor } from "./a11y-rules.ts";
+import { fixture, forwardedFor } from "./fixture.ts";
 
 /**
  * Layout at 375, 768 and 1440 (#39, BRAND §9).
@@ -60,7 +61,51 @@ async function checkNoOverflow(
 }
 
 test.describe("tap targets", () => {
-  test("every interactive element is at least 44x44 (BRAND §9)", async ({
+  /**
+   * Every public page, not just `/`.
+   *
+   * The first version visited the home page only. The footer link is global so
+   * it happened to be covered, but a small target introduced on `/privacy` or a
+   * project page would have gone unseen — and the three this test found were
+   * exactly that kind of thing: ordinary links nobody thought of as controls.
+   */
+  /**
+   * The rules live in `a11y-rules.ts`, not here.
+   *
+   * They were inline first, and a copy of them sat in `a11y.spec.ts` as the
+   * "guard". Mutating the rules left both green, because neither the spec nor
+   * the guard was calling the thing under test. The browser now only collects
+   * facts; every decision is a pure function the case tables also call.
+   */
+  const smallTargets = async (
+    page: import("@playwright/test").Page,
+  ): Promise<string[]> =>
+    (await tapTargetFactsFor(page))
+      .filter(isTooSmall)
+      .map(
+        (f) =>
+          `<${f.tag}> "${f.text}" ${String(Math.round(f.width))}x${String(Math.round(f.height))}`,
+      );
+
+  for (const path of ["/", "/privacy", "/404"]) {
+    test(`${path}: every interactive element is at least 44x44 (BRAND §9)`, async ({
+      page,
+    }, testInfo) => {
+      test.skip(
+        !testInfo.project.name.includes("375"),
+        "the 44px floor is a touch requirement",
+      );
+
+      await page.goto(path);
+      const small = await smallTargets(page);
+      expect(
+        small,
+        `${path} targets under 44px:\n  ${small.join("\n  ")}`,
+      ).toEqual([]);
+    });
+  }
+
+  test("a project detail page: every interactive element is at least 44x44", async ({
     page,
   }, testInfo) => {
     test.skip(
@@ -68,36 +113,37 @@ test.describe("tap targets", () => {
       "the 44px floor is a touch requirement",
     );
 
-    await page.goto("/");
+    const [, detail] = pages();
+    await page.goto(detail as string);
+    const small = await smallTargets(page);
+    expect(
+      small,
+      `the detail page has targets under 44px:\n  ${small.join("\n  ")}`,
+    ).toEqual([]);
+  });
 
-    const small = await page.evaluate(() => {
-      const results: string[] = [];
-      const selector = "a, button, input, select, textarea, [role='button']";
-      for (const el of document.querySelectorAll<HTMLElement>(selector)) {
-        const rect = el.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) continue;
-        if (el.getAttribute("aria-hidden") === "true") continue;
-        if (el.tabIndex < 0) continue;
-        /**
-         * Skip visually-hidden elements — the skip link and the honeypot.
-         *
-         * The skip link is `sr-only` until focused, so its unfocused box is
-         * 32x16 and measuring that is measuring nothing: it is not a touch
-         * target at all, it is a keyboard affordance that becomes a padded box
-         * the moment it receives focus. `keyboard.spec.ts` covers it there.
-         */
-        if (el.closest(".sr-only") ?? el.classList.contains("sr-only"))
-          continue;
-        if (rect.height < 44 || rect.width < 44) {
-          results.push(
-            `<${el.tagName.toLowerCase()}> "${(el.textContent ?? "").trim().slice(0, 30)}" ${String(Math.round(rect.width))}x${String(Math.round(rect.height))}`,
-          );
-        }
-      }
-      return results;
+  test("the admin dashboard: every interactive element is at least 44x44", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      !testInfo.project.name.includes("375"),
+      "the 44px floor is a touch requirement",
+    );
+
+    const { username, password } = fixture();
+    await page.setExtraHTTPHeaders({
+      "x-forwarded-for": forwardedFor(testInfo),
     });
+    await page.goto("/admin/login");
+    await page.locator("#login-username").fill(username);
+    await page.locator("#login-password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page).toHaveURL(/\/admin$/);
 
-    expect(small, `targets under 44px:\n  ${small.join("\n  ")}`).toEqual([]);
+    const small = await smallTargets(page);
+    expect(small, `admin targets under 44px:\n  ${small.join("\n  ")}`).toEqual(
+      [],
+    );
   });
 });
 
