@@ -3,6 +3,19 @@ import { ActionError, defineAction } from "astro:actions";
 // Astro 8. Importing from "astro/zod" is the supported path.
 import { z } from "astro/zod";
 import { AdminAuthError, assertAdmin, getDashboardStats } from "../lib/admin";
+import { isSameOrigin } from "../lib/origin";
+import { db } from "../lib/db";
+import {
+  PublishBlockedError,
+  ReorderMismatchError,
+  SlugImmutableError,
+  nextSequence,
+  normalizeSlug,
+  publishProject,
+  reorderProjects,
+  resolveSlug,
+  unpublishProject,
+} from "../lib/projects";
 
 /**
  * The Astro Actions foundation (SPEC §6, #26). Every admin mutation in Sprint 6
@@ -18,10 +31,24 @@ import { AdminAuthError, assertAdmin, getDashboardStats } from "../lib/admin";
  * the only check an action gets rather than a second one.
  */
 
-/** `assertAdmin`, with its failure mapped to the Actions error shape. */
+/**
+ * The two checks every action needs, in one call that cannot be half-applied.
+ *
+ * #27 requires each mutation to re-check the session AND verify origin. Two
+ * separate helpers means an action can call one and miss the other, and the miss
+ * is invisible — everything still works until someone posts cross-site. Folding
+ * them together makes forgetting impossible rather than merely unlikely.
+ *
+ * Origin first: a cross-site request should be refused before it can learn
+ * whether a session exists.
+ */
 export function requireAdmin(context: {
+  request: Request;
   locals: App.Locals;
 }): NonNullable<App.Locals["user"]> {
+  if (!isSameOrigin(context.request)) {
+    throw new ActionError({ code: "FORBIDDEN", message: "Forbidden." });
+  }
   try {
     return assertAdmin(context.locals);
   } catch (cause) {
@@ -31,6 +58,61 @@ export function requireAdmin(context: {
     throw cause;
   }
 }
+
+/**
+ * Maps a domain error to the Actions error shape.
+ *
+ * `BAD_REQUEST` rather than a 500: these are all "you asked for something the
+ * rules do not allow", which the form can render. A 500 would tell the admin
+ * the server broke when in fact it refused.
+ */
+function toActionError(cause: unknown): never {
+  if (
+    cause instanceof PublishBlockedError ||
+    cause instanceof SlugImmutableError ||
+    cause instanceof ReorderMismatchError
+  ) {
+    throw new ActionError({ code: "BAD_REQUEST", message: cause.message });
+  }
+  throw cause;
+}
+
+/**
+ * An empty form field means "not set", not an invalid URL.
+ *
+ * `z.url()` rather than the deprecated `z.string().url()` — zod 4 moved it to a
+ * top-level constructor and warns on the old form.
+ */
+const optionalUrl = z
+  .union([z.literal(""), z.url().max(512)])
+  .transform((value) => (value === "" ? null : value));
+
+/**
+ * The writable project fields. `slug` is handled separately — see `resolveSlug`.
+ *
+ * Every optional field is `.nullable()` with a default rather than `.optional()`:
+ * this project runs `exactOptionalPropertyTypes`, and an `undefined` spread into
+ * a Prisma `create`/`update` is a type error there. Always-present values also
+ * remove the "did the caller mean clear, or leave alone?" ambiguity, which for
+ * an edit form is always "clear".
+ */
+const ProjectFields = z.object({
+  title: z.string().trim().min(1).max(120),
+  suit: z.enum(["DIAMONDS", "SPADES", "HEARTS", "CLUBS"]),
+  summary: z.string().trim().max(180),
+  role: z.string().trim().max(120),
+  timeline: z.string().trim().max(120),
+  problem: z.string().max(5000),
+  body: z.string().max(50000),
+  outcome: z.string().max(5000),
+  liveUrl: optionalUrl.default(""),
+  repoUrl: optionalUrl.default(""),
+  coverImageId: z
+    .union([z.literal(""), z.string().min(1)])
+    .transform((value) => (value === "" ? null : value))
+    .default(""),
+  stackItemIds: z.array(z.string().min(1)).max(40).default([]),
+});
 
 export const server = {
   /**
@@ -48,6 +130,139 @@ export const server = {
     handler: async (_input, context) => {
       const user = requireAdmin(context);
       return getDashboardStats(user.id);
+    },
+  }),
+
+  /**
+   * Creates a DRAFT. Never PUBLISHED — publication goes through `publish`, which
+   * is the only place the SPEC §6 gate runs.
+   */
+  createProject: defineAction({
+    accept: "form",
+    input: ProjectFields.extend({ slug: z.string().trim().min(1).max(96) }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        const slug = normalizeSlug(input.slug);
+        if (slug.length === 0) {
+          throw new ActionError({
+            code: "BAD_REQUEST",
+            message: "Slug must contain at least one letter or number.",
+          });
+        }
+
+        const { stackItemIds, slug: _ignored, ...fields } = input;
+        const project = await db.project.create({
+          data: {
+            ...fields,
+            slug,
+            sequence: await nextSequence(),
+            status: "DRAFT",
+            stack: {
+              create: stackItemIds.map((stackItemId, sortOrder) => ({
+                stackItemId,
+                sortOrder,
+              })),
+            },
+          },
+          // Narrow select — never the whole row into a template (AGENT §2).
+          select: { id: true, slug: true },
+        });
+        return project;
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  updateProject: defineAction({
+    accept: "form",
+    input: ProjectFields.extend({
+      id: z.string().min(1),
+      slug: z.string().trim().min(1).max(96).optional(),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        const current = await db.project.findUnique({
+          where: { id: input.id },
+          select: { slug: true, status: true },
+        });
+        if (!current) {
+          throw new ActionError({
+            code: "NOT_FOUND",
+            message: "That project no longer exists.",
+          });
+        }
+
+        // Throws SlugImmutableError for a published project (SPEC §4).
+        const slug = resolveSlug(
+          current,
+          input.slug === undefined ? undefined : normalizeSlug(input.slug),
+        );
+
+        const { id, stackItemIds, slug: _ignored, ...fields } = input;
+        await db.project.update({
+          where: { id },
+          data: {
+            ...fields,
+            slug,
+            // Replace rather than merge: the form submits the full set, so a
+            // removed item must actually disappear.
+            stack: {
+              deleteMany: {},
+              create: stackItemIds.map((stackItemId, sortOrder) => ({
+                stackItemId,
+                sortOrder,
+              })),
+            },
+          },
+          select: { id: true },
+        });
+        return { id, slug };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  /** SPEC §6's gate lives in `publishProject`, re-read from the database. */
+  publishProject: defineAction({
+    accept: "form",
+    input: z.object({ id: z.string().min(1) }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        await publishProject(input.id);
+        return { ok: true };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  unpublishProject: defineAction({
+    accept: "form",
+    input: z.object({ id: z.string().min(1) }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      await unpublishProject(input.id);
+      return { ok: true };
+    },
+  }),
+
+  /** One transaction, and the list must name every project — see reorderProjects. */
+  reorderProjects: defineAction({
+    accept: "form",
+    input: z.object({ orderedIds: z.array(z.string().min(1)).min(1).max(200) }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        await reorderProjects(input.orderedIds);
+        return { ok: true };
+      } catch (cause) {
+        return toActionError(cause);
+      }
     },
   }),
 };

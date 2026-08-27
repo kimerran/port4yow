@@ -1,0 +1,168 @@
+---
+import { actions } from "astro:actions";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import Button from "../../../components/Button.astro";
+import { assertAdmin } from "../../../lib/admin";
+import { db } from "../../../lib/db";
+import { publishBlockers } from "../../../lib/projects";
+
+assertAdmin(Astro.locals);
+
+const projects = await db.project.findMany({
+  orderBy: { sequence: "asc" },
+  // Narrow select — never the whole row into a template (AGENT §2).
+  select: {
+    id: true,
+    slug: true,
+    sequence: true,
+    title: true,
+    suit: true,
+    status: true,
+    summary: true,
+    problem: true,
+    body: true,
+    outcome: true,
+    coverImage: { select: { altText: true } },
+  },
+});
+
+/**
+ * The publish gate, evaluated for the list so the admin can see what is missing
+ * before clicking. `publishProject` re-evaluates it server-side from the
+ * database — this is the explanation, not the enforcement (SPEC §6).
+ */
+const rows = projects.map((project) => ({
+  ...project,
+  blockers: publishBlockers(project),
+}));
+
+const FIELD_LABELS: Record<string, string> = {
+  title: "title",
+  summary: "summary",
+  problem: "problem",
+  body: "body",
+  outcome: "outcome",
+  cover: "cover image",
+  coverAltText: "cover alt text",
+};
+---
+
+<AdminLayout title="Projects — admin" heading="Projects">
+  <div class="flex flex-wrap items-center gap-md">
+    <Button href="/admin/projects/new">New project</Button>
+    <p class="font-mono text-label-sm text-ink-muted">
+      {rows.length === 0 ? "No projects yet." : `${rows.length} in the deck`}
+    </p>
+  </div>
+
+  {
+    rows.length === 0 ? (
+      /* BRAND §8 — an empty state is an invitation, not an apology. */
+      <p class="text-body-lg text-ink-muted">
+        The deck is empty. Add the first project and it becomes card 01.
+      </p>
+    ) : (
+      <section class="flex flex-col gap-md">
+        <h2 class="font-mono text-label-sm tracking-wide text-ink-muted uppercase">
+          Order
+        </h2>
+
+        {/* The reorder status, announced politely as items move. */}
+        <p
+          class="text-body-md"
+          data-reorder-status
+          role="status"
+          aria-live="polite"
+        />
+
+        <ol id="project-order" class="flex flex-col gap-sm">
+          {rows.map((row, index) => (
+            <li
+              class="flex flex-wrap items-center gap-md rounded-lg border border-deep-teal/15 bg-card-face p-md card-shadow"
+              data-project-id={row.id}
+              data-sequence={row.sequence}
+            >
+              <span class="font-mono text-index-rank text-ink-navy">
+                {String(row.sequence).padStart(2, "0")}
+              </span>
+
+              <span class="flex flex-col gap-xs">
+                <a
+                  class="font-display text-headline-md underline underline-offset-4"
+                  href={`/admin/projects/${row.id}`}
+                >
+                  {row.title}
+                </a>
+                <span class="font-mono text-label-sm text-ink-muted">
+                  {row.slug} · {row.suit.toLowerCase()} ·{" "}
+                  {row.status.toLowerCase()}
+                </span>
+              </span>
+
+              {row.blockers.length > 0 && (
+                <span class="text-[14px] text-error">
+                  Needs{" "}
+                  {row.blockers.map((b) => FIELD_LABELS[b] ?? b).join(", ")}
+                </span>
+              )}
+
+              {/*
+                BRAND §9 — drag is an enhancement, never the only way. These two
+                buttons are the keyboard path and they work with JavaScript
+                disabled too, because they are inside a form that posts.
+              */}
+              <span class="ml-auto flex items-center gap-xs">
+                <button
+                  type="button"
+                  data-move="up"
+                  disabled={index === 0}
+                  aria-label={`Move ${row.title} up`}
+                  class="flex h-11 min-w-11 items-center justify-center rounded border border-deep-teal/20 font-mono text-label-sm disabled:text-ink-muted"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  data-move="down"
+                  disabled={index === rows.length - 1}
+                  aria-label={`Move ${row.title} down`}
+                  class="flex h-11 min-w-11 items-center justify-center rounded border border-deep-teal/20 font-mono text-label-sm disabled:text-ink-muted"
+                >
+                  ↓
+                </button>
+              </span>
+            </li>
+          ))}
+        </ol>
+
+        {/*
+          Posts straight to the Action. Astro handles a form POST to an action
+          with no JavaScript at all, so the keyboard path is complete on its
+          own — the enhancement script only rewrites these inputs as items move.
+
+          One hidden input per id, in order, rather than one comma-joined
+          string: Astro maps repeated fields onto `z.array()` via `getAll`,
+          which preserves document order. A joined string would need a parser on
+          the way in, and the parser is where an ordering bug would hide.
+        */}
+        <form
+          method="POST"
+          action={actions.reorderProjects}
+          class="flex gap-md"
+        >
+          <span data-ordered-ids>
+            {rows.map((row) => (
+              <input type="hidden" name="orderedIds" value={row.id} />
+            ))}
+          </span>
+          <Button type="submit">Save order</Button>
+        </form>
+      </section>
+    )
+  }
+</AdminLayout>
+
+<script>
+  import { initProjectReorder } from "../../../scripts/project-reorder.ts";
+  initProjectReorder();
+</script>
