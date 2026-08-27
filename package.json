@@ -1,0 +1,35 @@
+{
+  "name": "mh-neri-ph",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "db:up": "docker compose up -d",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset --force && pnpm db:seed",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "lint": "eslint . && prettier --check .",
+    "typecheck": "astro check",
+    "audit": "pnpm audit --audit-level=moderate"
+  },
+  "dependencies": {
+    "@astrojs/node": "^11.1.4",
+    "astro": "^7.2.8"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@types/node": "^26.4.0",
+    "typescript": "^5.9.3"
+  }
+}

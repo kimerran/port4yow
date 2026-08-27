@@ -1,0 +1,44 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+.astro/
+
+# generated Prisma client (AGENT §2 — regenerated in postinstall)
+src/generated/
+
+# environment — never commit real secrets (SPEC §10)
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+
+# uploaded media and data dumps (AGENT §5)
+uploads/
+*.dump
+*.sql.gz
+
+# test + tooling output
+coverage/
+playwright-report/
+test-results/
+.eslintcache
+
+# agent tooling — session-local, never shared.
+# Scoped to the lock file rather than all of .claude/, so shared agent config
+# can be checked in later.
+.claude/scheduled_tasks.lock
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

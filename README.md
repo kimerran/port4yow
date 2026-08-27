@@ -5,13 +5,16 @@ Personal portfolio of **Mark Hugh Neri**, full-stack developer / software engine
 A public marketing site with a private admin CMS behind it. Astro SSR, Postgres, and a
 private S3 bucket, deployed to Railway at [`mh.neri.ph`](https://mh.neri.ph).
 
-> ### Status: pre-implementation
+> ### Status: early implementation — Sprint 1
 >
-> **There is no application code in this repository yet.** The backlog is fully specified
-> across [43 issues in 8 milestones](https://github.com/kimerran/port4yow/milestones), and
-> [#1](https://github.com/kimerran/port4yow/issues/1) bootstraps the scaffold. Every command
-> in this README describes the intended state and will not run until the sprints that create
-> it have landed.
+> The scaffold is in place: `pnpm install`, `pnpm typecheck`, `pnpm build` and `pnpm dev`
+> all work. The rest of the backlog is specified across
+> [43 issues in 8 milestones](https://github.com/kimerran/port4yow/milestones).
+>
+> **Not everything in this README runs yet.** `pnpm lint` needs
+> [#3](https://github.com/kimerran/port4yow/issues/3), `pnpm test` needs
+> [#8](https://github.com/kimerran/port4yow/issues/8), and every `db:*` script needs
+> [#5](https://github.com/kimerran/port4yow/issues/5).
 
 ---
 
@@ -22,13 +25,12 @@ disagree, the document wins.
 
 | File | Authority | Covers |
 |---|---|---|
-| **[SPEC.md](SPEC.md)** | What to build | Scope, data model, routes, auth, storage, security requirements, build order |
-| **[BRAND.md](BRAND.md)** | How it looks | "The Wild Card" visual system — tokens, type, geometry, components, voice, reject list |
-| **[AGENT.md](AGENT.md)** | How to work | Stack conventions, per-route security checklist, code style, definition of done |
+| **[SPEC.md](docs/SPEC.md)** | What to build | Scope, data model, routes, auth, storage, security requirements, build order |
+| **[BRAND.md](docs/BRAND.md)** | How it looks | "The Wild Card" visual system — tokens, type, geometry, components, voice, reject list |
+| **[AGENT.md](docs/AGENT.md)** | How to work | Stack conventions, per-route security checklist, code style, definition of done |
 | **[auto-dev.md](auto-dev.md)** | Autonomous loop | How an agent picks and ships the next issue |
 
-Read all three before writing code. [Issue #1](https://github.com/kimerran/port4yow/issues/1)
-relocates them to `docs/` as part of the scaffold.
+Read all three before writing code.
 
 ---
 
