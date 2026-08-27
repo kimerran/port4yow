@@ -153,3 +153,88 @@ Nothing blocks this issue.
 ## Content TODOs
 
 None.
+
+---
+
+## Review round 2 — both notes acted on
+
+The review tagged `ready-to-merge` with two non-blocking observations. Both were
+worth doing, and one of them was a real gap rather than a nicety.
+
+### `/healthz` had no automated test (fixed)
+
+The reviewer is right that this is the file where a regression is most
+expensive: `railway.json` sets `restartPolicyType: ON_FAILURE` with 3 retries, so
+an uncaught throw here does not degrade the site — it **crash-loops** it. Both of
+us had confirmed 200/503/recovery by hand and got identical numbers, so the
+behaviour was never in doubt; what was missing was the guard that keeps it true.
+
+`src/pages/__tests__/healthz.test.ts` mocks the pool, which is the right seam:
+the interesting case is a database that is _unreachable_, and a suite needing a
+live database cannot exercise it. The failure fixture is the **real** Prisma
+string, host and port included —
+
+```
+Raw query failed. Code: `N/A`. Message: `Can't reach database server at 127.0.0.1:55466`
+```
+
+— so "leaks nothing" is asserted against the actual thing that would leak, not
+against a placeholder. It also pins the response to **exactly** three keys, so a
+field added later cannot leak by accident.
+
+### No query timeout (fixed)
+
+`docker stop` gives a fast connection-refused; a black-holed network gives a
+hang, and `$queryRaw` would then sit past `healthcheckTimeout: 30`. The
+reviewer correctly called this an observation rather than a defect — Railway
+declares the poll failed either way.
+
+It is still worth bounding, for a reason the verdict hides: an unbounded probe
+leaves the request open and the connection held while the platform waits out its
+own timeout. With a 5-second bound the answer always comes from us, the
+connection is released, and the reason reaches our log instead of nowhere.
+
+`Promise.race`, not an abort: the driver's query is not cancellable here, so the
+honest description is "we stopped waiting", not "we cancelled it". The timer is
+cleared on the winning path so a hung probe cannot hold the process open.
+
+### Re-verified
+
+| Check                    | Result                                                         |
+| ------------------------ | -------------------------------------------------------------- |
+| healthy                  | `{"status":"ok","uptime":0,"db":"ok"}` **200**                 |
+| Postgres stopped         | `{"status":"error","uptime":10,"db":"error"}` **503 in 11 ms** |
+| reason stays server-side | 1 log line, 0 occurrences in the body                          |
+| recovered                | **200**, no restart needed                                     |
+
+Mutation results — each asserted to have applied, and with a control:
+
+| Mutation                             | Tests failed |
+| ------------------------------------ | ------------ |
+| return the driver reason in the body | 2            |
+| answer 500 instead of 503            | 2            |
+| remove the probe timeout             | 1            |
+| cache the failure response           | 1            |
+| comment-only change (control)        | **0**        |
+
+Gate: `typecheck` 0 errors / 0 warnings / 0 hints · `lint` PASS · `test` **474**
+passed, 109 skipped · `build` PASS.
+
+### On the orphan-grouping note
+
+The reviewer went looking for a bare `projects/{id}/{ulid}.webp` original that
+`stemOf`'s `-\d+\.ext` anchor would miss, and found that `upload.ts` never writes
+one. That is worth having in writing here rather than only in a PR thread: the
+job's grouping and the uploader's key format agree **by construction**, not by
+coincidence — `upload.ts` writes every key as `${keyStem}-${width}.${ext}` and
+the sibling queries use `startsWith: \`${keyStem}-\``. If a future change ever
+stores an original alongside its derivatives, `stemOf` needs revisiting in the
+same commit.
+
+### On the CI gap
+
+Recorded, not fixed here. `ci.yml` runs a bare `pnpm test` with no Postgres
+service and none of the `*_IT` flags, so the green tick covers 1 of the 13 tests
+in this PR. `test:integration` now wires every flag into one command, so the
+remaining work is a Postgres (and Mailpit, and MinIO) service in the workflow.
+Open since #19 and worth its own issue.
