@@ -1,0 +1,18 @@
+---
+import Button from "../components/Button.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+/* BRAND §8 — brand-voiced, not an apology. #18 owns this page properly; it
+   exists here because SPEC §5 requires an unknown slug to reach a real 404. */
+Astro.response.status = 404;
+---
+
+<BaseLayout
+  title="Not found — mh.neri.ph"
+  description="That card isn't in the deck."
+>
+  <section class="flex flex-col items-start gap-lg py-2xl">
+    <h1 class="font-display text-headline-lg">That card isn't in the deck.</h1>
+    <Button variant="secondary" href="/#work">Back to the work</Button>
+  </section>
+</BaseLayout>
