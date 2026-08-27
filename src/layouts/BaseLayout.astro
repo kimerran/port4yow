@@ -129,9 +129,21 @@ const ogImageUrl = ogImage
       <footer class="mx-auto w-full max-w-[1280px] px-md py-xl md:px-lg">
         {/* Inset to the content column, never full-bleed (BRAND §4). */}
         <div class="border-t border-deep-teal/10 pt-lg">
-          <p class="font-mono text-label-sm text-ink-muted uppercase">
-            {/* TODO(content): privacy note lands with #36. */}
+          <p
+            class="flex flex-wrap items-center gap-x-md gap-y-sm font-mono text-label-sm text-ink-muted uppercase"
+          >
             <span>© {new Date().getFullYear()} Mark Hugh Neri</span>
+            {
+              /* SPEC §14.10 requires the privacy note to be linked from the
+                 footer, and the footer lives here — so it is on every public
+                 page by construction rather than by remembering. A plain <a>:
+                 it inherits the global focus ring (BRAND §9), and the underline
+                 is not the only thing distinguishing it. */
+            }
+            <a
+              class="underline underline-offset-4 hover:text-deep-teal focus-visible:text-deep-teal"
+              href="/privacy">Privacy</a
+            >
           </p>
         </div>
       </footer>

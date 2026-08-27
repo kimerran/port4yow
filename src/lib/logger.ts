@@ -44,6 +44,29 @@ const IP_KEY = /(^|_)ip(_?(address|v4|v6))?($|_)/;
 const REDACTED = "[redacted]";
 
 /**
+ * An email address appearing *inside* a string value, not under a key that
+ * names one.
+ *
+ * #36's audit found the gap: key-based redaction cannot see what it cannot
+ * name, and the SMTP path logs `reason: cause.message`. A rejection from a mail
+ * server routinely quotes the address it rejected — `550 5.1.1
+ * <someone@example.com>: recipient rejected` — and that address is the visitor's
+ * reply-to. It reaches the log under the key `reason`, which is not an email
+ * key, so every filter above passes it through.
+ *
+ * Deliberately not matched: bare IP addresses in the same position. The only
+ * IP-shaped strings that reach a log line here come from driver errors naming
+ * our own database host, which is the useful half of the message; a client
+ * address is hashed at the one place it is read and never travels as a string.
+ * Masking both would cost real debugging information to fix a leak that does
+ * not exist.
+ */
+const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
+
+const maskEmailsInText = (value: string): string =>
+  value.replace(EMAIL_IN_TEXT, (match) => maskEmail(match));
+
+/**
  * An email in a log is a PII leak (SPEC §14.10); the domain alone is usually
  * enough to debug with, so keep that and drop the local part.
  */
@@ -62,7 +85,9 @@ export function redact(value: unknown, depth = 0): unknown {
   if (value === null || value === undefined) return value;
 
   if (value instanceof Error) {
-    return { name: value.name, message: value.message };
+    // Same masking as any other string: an Error reaching a log line whole is
+    // the other way a mail-server rejection carries an address in.
+    return { name: value.name, message: maskEmailsInText(value.message) };
   }
   if (Array.isArray(value)) {
     return value.slice(0, 20).map((v) => redact(v, depth + 1));
@@ -79,6 +104,7 @@ export function redact(value: unknown, depth = 0): unknown {
     }
     return out;
   }
+  if (typeof value === "string") return maskEmailsInText(value);
   return value;
 }
 

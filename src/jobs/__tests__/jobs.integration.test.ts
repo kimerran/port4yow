@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The scheduled jobs against real Postgres (#35).
@@ -29,6 +29,7 @@ describe.skipIf(!enabled)("scheduled jobs", () => {
   let userId: string;
 
   const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
 
   beforeEach(async () => {
     jobs = await import("../index.ts");
@@ -36,6 +37,7 @@ describe.skipIf(!enabled)("scheduled jobs", () => {
 
     await db.session.deleteMany({});
     await db.rateLimit.deleteMany({});
+    await db.contactMessage.deleteMany({});
     await db.projectImage.deleteMany({});
     await db.project.updateMany({ data: { coverImageId: null } });
     await db.mediaAsset.deleteMany({});
@@ -57,6 +59,7 @@ describe.skipIf(!enabled)("scheduled jobs", () => {
   afterAll(async () => {
     await db.session.deleteMany({});
     await db.rateLimit.deleteMany({});
+    await db.contactMessage.deleteMany({});
     await db.user.deleteMany({ where: { username: { startsWith: "job-" } } });
     await db.$disconnect();
   });
@@ -125,6 +128,132 @@ describe.skipIf(!enabled)("scheduled jobs", () => {
 
       expect((await jobs.pruneRateLimits(now)).deleted).toBe(1);
       expect((await jobs.pruneRateLimits(now)).deleted).toBe(0);
+    });
+  });
+
+  describe("contact:prune", () => {
+    const message = async (id: string, createdAt: Date): Promise<void> => {
+      await db.contactMessage.create({
+        data: {
+          id,
+          name: "Visitor",
+          email: `${id}@example.com`,
+          message: "hello",
+          ipHash: "h",
+          createdAt,
+        },
+      });
+    };
+
+    /** `now` shifted back whole calendar months — the job's own arithmetic. */
+    const monthsAgo = (now: Date, months: number): Date =>
+      jobs.monthsBefore(now, months);
+
+    /**
+     * #36's first acceptance criterion, stated as the boundary rather than as
+     * "old rows go". 23 months is the case that catches an off-by-one in the
+     * window, and it is the one a visitor would notice.
+     */
+    it("deletes at 25 months and keeps at 23", async () => {
+      const now = new Date("2026-06-15T00:00:00.000Z");
+      await message("old", monthsAgo(now, 25));
+      await message("recent", monthsAgo(now, 23));
+
+      expect((await jobs.pruneContactMessages(now)).deleted).toBe(1);
+
+      const left = await db.contactMessage.findMany({ select: { id: true } });
+      expect(left.map((m) => m.id)).toEqual(["recent"]);
+    });
+
+    it("keeps a message one day inside the window", async () => {
+      const now = new Date("2026-06-15T00:00:00.000Z");
+      const cutoff = monthsAgo(now, 24);
+      await message("just-inside", new Date(cutoff.getTime() + DAY));
+      await message("just-outside", new Date(cutoff.getTime() - DAY));
+
+      expect((await jobs.pruneContactMessages(now)).deleted).toBe(1);
+      const left = await db.contactMessage.findMany({ select: { id: true } });
+      expect(left.map((m) => m.id)).toEqual(["just-inside"]);
+    });
+
+    it("is safe to run twice back to back", async () => {
+      const now = new Date("2026-06-15T00:00:00.000Z");
+      await message("old", monthsAgo(now, 30));
+      await message("recent", monthsAgo(now, 1));
+
+      expect((await jobs.pruneContactMessages(now)).deleted).toBe(1);
+      expect((await jobs.pruneContactMessages(now)).deleted).toBe(0);
+      expect(await db.contactMessage.count()).toBe(1);
+    });
+
+    it("does nothing on an empty table", async () => {
+      expect((await jobs.pruneContactMessages()).deleted).toBe(0);
+    });
+
+    /**
+     * #36: "logs a count, not the rows". A ContactMessage is a name, an email
+     * address and free text a stranger typed — logging the rows being deleted
+     * for privacy reasons would copy them to a log shipper with no retention
+     * policy at all.
+     */
+    /**
+     * #36: "logs a count, not the rows" — asserted against what reaches the
+     * stream, not against the return value. An earlier version of this suite
+     * checked the return value only, and a mutation that logged a name and an
+     * email address alongside the count failed nothing.
+     *
+     * Pinned to the exact key set rather than a substring search: the failure
+     * to catch is a *new* field, and you cannot grep for a string you have not
+     * thought of.
+     */
+    it("logs the count and the cutoff, and nothing else", async () => {
+      const now = new Date("2026-06-15T00:00:00.000Z");
+      await message("old", monthsAgo(now, 30));
+
+      let out = "";
+      const write = (chunk: string | Uint8Array): boolean => {
+        out +=
+          typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+        return true;
+      };
+      const stdout = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(write);
+      const stderr = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(write);
+      try {
+        await jobs.pruneContactMessages(now);
+      } finally {
+        stdout.mockRestore();
+        stderr.mockRestore();
+      }
+
+      const line = out
+        .split("\n")
+        .find((l) => l.includes("job: contact:prune"));
+      expect(line).toBeDefined();
+
+      const context = JSON.parse(
+        /(\{.*\})\s*$/.exec(line ?? "")?.[1] ?? "{}",
+      ) as Record<string, unknown>;
+      expect(Object.keys(context).sort()).toEqual(["cutoff", "deleted"]);
+      expect(context["deleted"]).toBe(1);
+
+      // And nothing from the row itself, whatever key it might arrive under.
+      expect(out).not.toContain("Visitor");
+      expect(out).not.toContain("example.com");
+      expect(out).not.toContain("hello");
+    });
+
+    it("returns a count and never the rows", async () => {
+      const now = new Date("2026-06-15T00:00:00.000Z");
+      await message("old", monthsAgo(now, 30));
+
+      const result = await jobs.pruneContactMessages(now);
+      expect(result).toEqual({ job: "contact:prune", deleted: 1 });
+      expect(JSON.stringify(result)).not.toContain("example.com");
+      expect(JSON.stringify(result)).not.toContain("Visitor");
     });
   });
 
@@ -231,8 +360,15 @@ describe.skipIf(!enabled)("scheduled jobs", () => {
   });
 
   describe("the job registry", () => {
-    it("exposes exactly the three jobs SPEC §11 names", () => {
+    /**
+     * Exact rather than `toContain`: the registry is what `pnpm job` will
+     * accept, and a job added without a Railway service to invoke it is a job
+     * that never runs. #36 adds the fourth — SPEC §11's three plus SPEC
+     * §14.10's retention prune.
+     */
+    it("exposes exactly the jobs with a schedule behind them", () => {
       expect([...jobs.JOB_NAMES].sort()).toEqual([
+        "contact:prune",
         "media:orphans",
         "ratelimit:prune",
         "session:prune",

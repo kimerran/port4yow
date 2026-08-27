@@ -1,6 +1,7 @@
 # Scheduled jobs
 
-SPEC §11's three jobs, invoked by Railway cron. Each runs through one entry
+SPEC §11's three jobs plus SPEC §14.10's retention prune, invoked by Railway
+cron. Each runs through one entry
 point so they share an exit-code contract: **0** on success, **1** on failure,
 **2** for an unknown job name. Railway records a non-zero exit as a failed run,
 which is the only signal a schedule gives you.
@@ -9,6 +10,7 @@ which is the only signal a schedule gives you.
 pnpm job session:prune
 pnpm job ratelimit:prune
 pnpm job media:orphans
+pnpm job contact:prune
 ```
 
 ## Railway cron services
@@ -23,9 +25,12 @@ check only — so these are set in the service's own settings.
 | `cron-session-prune`   | `0 3 * * *`    | `pnpm job session:prune`   |
 | `cron-ratelimit-prune` | `0 * * * *`    | `pnpm job ratelimit:prune` |
 | `cron-media-orphans`   | `0 4 * * 1`    | `pnpm job media:orphans`   |
+| `cron-contact-prune`   | `0 5 1 * *`    | `pnpm job contact:prune`   |
 
 `media:orphans` runs weekly on Monday at 04:00, after the daily session prune, so
-a week's reports land at a predictable time.
+a week's reports land at a predictable time. `contact:prune` runs monthly on the
+1st at 05:00 — monthly is what SPEC §14.10's window needs, and a message is at
+most a month past 24 months when it goes.
 
 ## What each job does, and what it deliberately does not
 
@@ -49,6 +54,21 @@ it is referenced, and even then it only prints: deciding an image is genuinely
 unused is a judgement about intent, and the cost of being wrong is an image
 nobody can get back.
 
+**`contact:prune` is the only one of these that is a correctness mechanism.** The
+other three are housekeeping — #23 and #19 already make a stale row harmless, and
+the orphan report changes nothing at all. This one is different in kind: the
+privacy note at `/privacy` states that contact messages are deleted after 24
+months, and **nothing else in the system enforces that**. If this schedule stops
+running, the promise quietly becomes false while every page still says otherwise.
+Treat a failed run here as a broken commitment, not a missed cleanup.
+
+Its window is whole calendar months, not 730 days, because that is what the note
+says — and the cutoff clamps to the last day of the target month so a message
+sent on 29 February is not deleted a day early. The job logs the count and the
+cutoff and never the rows: a `ContactMessage` is a name, an email address and
+free text a stranger typed, and logging those _because_ of a privacy policy would
+copy them to a log shipper with no retention policy at all.
+
 ## Idempotence
 
 Every job is a **predicate over current state** — "delete rows already past their
@@ -65,6 +85,7 @@ a first run.
 ```
 {"job":"session:prune","deleted":4}
 {"job":"media:orphans","found":1,"keys":["projects/abc/01ORPHAN"]}
+{"job":"contact:prune","deleted":2}
 ```
 
 A run that logs nothing did not happen.
