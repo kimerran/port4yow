@@ -52,6 +52,31 @@
   here. **Worth a follow-up** — either compose should create it or the first-run docs should
   say to. Not folded in, because it edits #4's file and belongs in its own change.
 
+## Security — a high-severity advisory Prisma pulls in
+
+`pnpm audit --audit-level=moderate` failed after installing Prisma, so **CI would have been
+red** (AGENT §5: red CI does not merge):
+
+```
+deepmerge-ts  <8.0.0   HIGH   GHSA-ggr8-5vv4-36mx
+path: . > prisma > @prisma/config > deepmerge-ts
+```
+
+Transitive, and Prisma has not shipped a release that bumps it. Pinned it forward with a
+pnpm override rather than shipping a known-vulnerable dependency or weakening the audit
+threshold:
+
+```json
+"pnpm": { "overrides": { "deepmerge-ts": ">=8.0.0" } }
+```
+
+An override that silently breaks the tool would be worse than the advisory, so Prisma was
+re-exercised underneath it — `validate` ✓, `generate` ✓, and `migrate deploy` against a
+**fresh empty database** producing all 11 tables. `pnpm audit` is now clean.
+
+**Remove the override when Prisma bumps `@prisma/config`.** Dependabot (#8) will surface
+that; the override is a floor, not a pin, so a fixed Prisma satisfies it without edits.
+
 ## Blocked
 
 Nothing.
