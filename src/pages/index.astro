@@ -1,14 +1,19 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import HeroCard from "../components/HeroCard.astro";
 ---
 
 <BaseLayout
   title="Mark Hugh Neri — full-stack engineer"
-  description="Full-stack developer and software engineer. Schema, server, interface, and the pipeline that ships them."
+  description="Full-stack developer and software engineer."
 >
-  {/* Placeholder. #14 builds the real home page on this shell. */}
-  <h1 class="font-display text-display-xl">Mark Hugh Neri</h1>
-  <p class="mt-md max-w-[66ch] text-body-lg text-ink-muted">
-    Scaffold only — see the sprint backlog.
-  </p>
+  {
+    /* #14 builds the real home page; this places the hero so #13 is verifiable. */
+  }
+  <div class="flex flex-col items-center gap-xl">
+    <h1 class="text-center font-display text-display-xl">Mark Hugh Neri</h1>
+    <HeroCard
+      stack={["TypeScript", "Astro", "PostgreSQL", "Prisma", "Docker"]}
+    />
+  </div>
 </BaseLayout>

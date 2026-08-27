@@ -1,0 +1,79 @@
+---
+import Card from "./Card.astro";
+import SuitGlyph from "./SuitGlyph.astro";
+
+/**
+ * BRAND §5 — the signature element. One Jack of Diamonds, face up.
+ *
+ * "This is the only rotation, the only radial wash, and the only entrance
+ * animation on the site." Nothing else here rotates or fades in.
+ *
+ * A visitor must never need to know what cardology is (BRAND §1): no tarot, no
+ * star maps, no zodiac glyphs. This reads as a playing card and nothing else.
+ */
+interface Props {
+  /** Set in IBM Plex Mono at 10px along the lower half of the well. */
+  stack?: string[];
+  /** Rendered at 10% opacity in the inset well. */
+  monogram?: string;
+}
+
+const { stack = [], monogram = "MHN" } = Astro.props;
+---
+
+{
+  /* The single radial metallic-gold wash at 8%, falling off fast into cool-stock.
+    Decorative, so it never reaches the accessibility tree. */
+}
+<div class="relative flex items-center justify-center" data-hero-card>
+  <div class="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+    <div class="h-full w-full hero-wash"></div>
+  </div>
+
+  {/* 280px mobile / 380px desktop, per BRAND §5. */}
+  <div class="w-[280px] animate-deal md:w-[380px]">
+    <Card class="flex flex-col justify-between p-md">
+      {/* Top-left index: Bodoni J over a diamond pip in luminous-cyan. */}
+      <div class="flex flex-col items-center gap-xs self-start">
+        <span class="font-display text-headline-md leading-none text-ink-navy"
+          >J</span
+        >
+        <span class="text-luminous-cyan"
+          ><SuitGlyph suit="diamonds" class="h-3 w-3" /></span
+        >
+      </div>
+
+      {/* Centre: inset well, monogram at 10%, stack list in mono 10px. */}
+      <div
+        class="relative flex flex-1 flex-col justify-end overflow-hidden rounded bg-surface-sunken p-sm"
+      >
+        <span
+          class="pointer-events-none absolute inset-0 flex items-center justify-center font-display text-[96px] leading-none text-ink-navy opacity-10 select-none"
+          aria-hidden="true">{monogram}</span
+        >
+        {
+          stack.length > 0 && (
+            <ul class="relative flex flex-col gap-[2px] font-mono text-[10px] leading-tight text-ink-muted">
+              {stack.map((item) => (
+                <li>{item}</li>
+              ))}
+            </ul>
+          )
+        }
+      </div>
+
+      {
+        /* Bottom-right index: the same block rotated 180°, exactly as a real
+          court card repeats itself. */
+      }
+      <div class="flex rotate-180 flex-col items-center gap-xs self-end">
+        <span class="font-display text-headline-md leading-none text-ink-navy"
+          >J</span
+        >
+        <span class="text-luminous-cyan"
+          ><SuitGlyph suit="diamonds" class="h-3 w-3" /></span
+        >
+      </div>
+    </Card>
+  </div>
+</div>
