@@ -23,7 +23,8 @@ There is no `COMPANY.md` in this repo. Do not go looking for one.
 ## Picking the next issue
 
 The backlog is 43 issues across **8 milestones**, one per sprint, and they follow
-SPEC §17's build order. **Sprints are sequential.** SPEC §17 closes with "ship each
+SPEC §17's build order. A human tags one sprint at a time with `agent-ready`; that label
+is the gate on what you may pick up. **Sprints are sequential.** SPEC §17 closes with "ship each
 step working before starting the next — do not scaffold every page and fill them in
 later," and AGENT §1.3 says the same thing. Do not skip ahead to a more interesting
 issue in a later sprint.
@@ -31,19 +32,42 @@ issue in a later sprint.
 ### Selection algorithm
 
 ```bash
+# 0. Always start from an up-to-date develop.
+git fetch --all --prune && git checkout develop && git pull --ff-only
+
 # 1. Earliest milestone that still has open issues.
 NEXT_MS="$(gh api repos/:owner/:repo/milestones \
   --jq 'map(select(.open_issues > 0)) | sort_by(.number) | .[0].title')"
 
-# 2. Lowest-numbered open, unblocked issue inside it.
-gh issue list --milestone "$NEXT_MS" --state open \
+# 2. Issue numbers already claimed by an open PR — never start these again.
+#    Read from the BRANCH NAME, which `gh issue develop <n>` always prefixes with
+#    the issue number. Do NOT scan PR bodies: they reference sibling issues in
+#    prose, and you will claim issues nobody is working on.
+CLAIMED="$(gh pr list --state open --limit 50 --json headRefName \
+  | jq -r '[.[].headRefName | scan("^[0-9]+") | tonumber] | join(",")')"
+
+# 3. Lowest-numbered open, unblocked, unclaimed, agent-ready issue in that milestone.
+#    Note the pipe into standalone `jq` — `gh --jq` does not accept --arg/--argjson.
+gh issue list --label agent-ready --milestone "$NEXT_MS" --state open \
   --json number,title,labels \
-  --jq '[.[] | select([.labels[].name] | any(. == "needs-clarification" or . == "blocked") | not)]
-        | sort_by(.number) | .[0]'
+  | jq -r --argjson claimed "[$CLAIMED]" '
+      [ .[]
+        | select([.labels[].name] | any(. == "needs-clarification" or . == "blocked") | not)
+        | select(.number as $n | $claimed | index($n) | not)
+      ] | sort_by(.number) | .[0] | "#\(.number) \(.title)"'
 ```
 
 Rules that make this deterministic:
 
+- **Skip any issue that already has an open PR.** Because `Closes #N` does not auto-close
+  here, an issue stays open while its PR is in review — so the naive query hands you work
+  that is already done and you rebuild it. Step 2 above is not optional.
+- **`closingIssuesReferences` is always empty in this repo** and cannot be used for that
+  check. GitHub only populates it for PRs against the **default** branch; ours target
+  `develop`, so the field reports `[]` even when the body says `Closes #1`. Verified on
+  PR #44. The branch-name prefix is the signal that actually works.
+- **Only `agent-ready` issues are in play.** The label marks a sprint a human has cleared
+  for autonomous work. An issue without it is not yours to start, however obvious it looks.
 - **Lowest open issue number in the earliest open milestone wins.** Nothing else.
   No claiming, no comments-as-locks — you are the only worker, so ordering is enough.
 - **Skip** anything labelled `needs-clarification` or `blocked`. If that empties the
@@ -52,10 +76,15 @@ Rules that make this deterministic:
   slug — or deriving one with `git remote get-url origin | sed 's/.*://'` — breaks on
   this repo's **HTTPS** remote and yields `//github.com/kimerran/port4yow`, which `gh`
   rejects. This has cost whole runs in sibling projects.
-- **Never AND two labels speculatively.** `gh`'s comma-separated `--label` is an AND;
-  querying a label that does not exist returns `[]` and looks exactly like an empty
-  backlog. The labels that exist here are `sprint-1`…`sprint-8`, `area/*`, `security`,
-  and `accessibility`. There is no `agent-ready` label in this repo.
+- **Never AND a label you have not confirmed exists.** `gh`'s repeated/comma-separated
+  `--label` is an AND, so one non-existent label returns `[]` and looks exactly like an
+  empty backlog — a failure mode that has cost whole runs in sibling repos. The labels
+  here are `agent-ready`, `sprint-1`…`sprint-8`, `area/*`, `security`, `accessibility`,
+  `needs-clarification`, and `blocked`. **If the query returns nothing, verify with
+  `gh label list` before concluding the backlog is empty.**
+- **`agent-ready` is applied one sprint at a time.** When the current sprint's issues are
+  all closed and nothing is `agent-ready`, that is the human's cue to tag the next sprint —
+  report it and stop. Do not tag the next sprint yourself.
 
 ### Before you start
 
@@ -69,19 +98,31 @@ silently create a redundant `-1` branch alongside an existing one if you do not 
 
 ---
 
-## Bootstrap: the repository is empty
+## Branches
 
-As of this file's writing, `main` has **zero commits**. Until issue #1 (scaffold) lands
-there is no `package.json`, so:
+- **`develop` is the working branch.** Every issue branch is cut from it, and every PR
+  targets it. Start each run by bringing it up to date — step 0 of the algorithm above.
+- **`main` is the default branch** and is not written to directly by this loop.
+- **`Closes #N` does not auto-close here.** GitHub only auto-closes an issue when the PR
+  merges into the **default** branch, and this project merges into `develop`. Keep the
+  `Closes #N` line — it links the PR to the issue — but **the issue must be closed by
+  hand after the merge**, and only after verifying its acceptance criteria against the
+  code. This exact trap has produced silently-open backlogs in sibling projects.
 
-- `gh issue develop` may refuse to branch from an empty repository. For #1 only, commit
-  directly to a `1-scaffold` branch created by hand and open the PR from it.
-- **The verification gate does not exist yet.** `pnpm typecheck` / `lint` / `test` only
-  become runnable as #1, #3 and #8 land. Run whatever subset exists and **say plainly in
-  the PR which commands you could not run.** Do not claim a gate passed that you never
-  invoked.
+## Toolchain state
 
-Once #1 is merged, the normal flow below applies with no exceptions.
+The scaffold (#1) landed the Astro app, so `pnpm install`, `pnpm typecheck`, `pnpm build`
+and `pnpm dev` all work. **The rest of the gate does not exist yet:**
+
+| Command | Available after |
+|---|---|
+| `pnpm lint` | #3 (ESLint + Prettier) |
+| `pnpm test` | #8 / #37 (Vitest) |
+| `pnpm test:e2e` | #39 (Playwright) |
+| `pnpm db:*` | #5 (Prisma) |
+
+Run whatever subset exists and **say plainly in the PR which commands you could not run.**
+Never claim a gate passed that you did not invoke.
 
 ---
 
@@ -97,8 +138,10 @@ Once #1 is merged, the normal flow below applies with no exceptions.
 
 3. **If clear — build it.**
    ```bash
-   gh issue develop <n> --checkout
+   gh issue develop <n> --base develop --checkout
    ```
+   **`--base develop` is required.** Without it `gh` branches from the default branch
+   (`main`), and the PR will be diffed against the wrong base.
    - Implement the issue's scope. **Vertical slice, working end to end** — not a stub.
    - Honour every line of the issue's **Constraints** block. They exist because the
      spec calls out that exact mistake.
@@ -131,8 +174,11 @@ Once #1 is merged, the normal flow below applies with no exceptions.
 
      <what changed, how it was verified, what was not run>"
      ```
-   - PRs target **`main`** (the default branch), so `Closes #<n>` genuinely auto-closes
-     the issue on merge. This repo has no `develop` branch — do not invent one.
+   - ```bash
+     gh pr create --base develop --title "..." --body "..."
+     ```
+     **`--base develop` is required on every PR.** Include `Closes #<n>` to link the
+     issue, but remember it will not fire on merge — see **Branches** above.
 
 6. **Write the handoff** to `docs/features/<n>-<slug>.md` — one new file per PR, never a
    shared appended file. Two branches appending to the end of one file collide by
@@ -182,6 +228,15 @@ human's attention.
 
 ## Closing an issue
 
-A merged PR into `main` auto-closes via `Closes #<n>`. Before trusting that, verify the
-issue's acceptance checklist against the **code**, not against the PR description. An
-issue whose boxes are not all genuinely ticked stays open, and you say why.
+**Nothing closes automatically.** PRs merge into `develop`, not the default branch, so
+`Closes #<n>` never fires. At the start of each run, check for issues whose PR has already
+merged and close them by hand:
+
+```bash
+gh pr list --state merged --limit 20 --json number,title,closingIssuesReferences \
+  --jq '.[] | "\(.number)\t\([.closingIssuesReferences[].number] | join(","))\t\(.title)"'
+```
+
+Before closing, verify the issue's acceptance checklist against the **code**, not against
+the PR description. An issue whose boxes are not all genuinely ticked stays open, and you
+say why.
