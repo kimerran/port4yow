@@ -172,6 +172,27 @@ export default defineConfig(
     rules: { "no-restricted-properties": "off" },
   },
 
+  {
+    /**
+     * `typescript-eslint` cannot type the markup returned from a template
+     * expression through `astro-eslint-parser` — a `.map()` rendering elements
+     * reports "Unsafe return of a value of type error". TypeScript itself is
+     * happy: `astro check` reports 0 errors on the same file, so this is a
+     * parser gap, not a real `any` leaking in.
+     *
+     * Reproduced minimally:
+     *   const xs = [{ h: "/a" }];
+     *   <ul>{xs.map((x) => <li><a href={x.h}>x</a></li>)}</ul>
+     *
+     * Scoped to .astro files and to this one rule. Every AGENT §2/§3 ban —
+     * no-explicit-any, ban-ts-comment, no-non-null-assertion, no-eval,
+     * no-console, set:html, child_process, process.env — stays on everywhere,
+     * and `astro check` still type-checks these files properly.
+     */
+    files: ["**/*.astro"],
+    rules: { "@typescript-eslint/no-unsafe-return": "off" },
+  },
+
   // Must stay last: turns off every rule Prettier owns.
   prettier,
 );

@@ -1,0 +1,96 @@
+---
+import { Font } from "astro:assets";
+import FacetLattice from "../components/FacetLattice.astro";
+import SiteNav from "../components/SiteNav.astro";
+import "../styles/global.css";
+
+/**
+ * The shell every public page renders into (SPEC §5, BRAND §4/§7).
+ *
+ * The <Font> tags below are load-bearing: Astro's `fonts` config in
+ * astro.config.mjs downloads and self-hosts the files, but emits NO @font-face
+ * unless this component renders in <head> (#9's handoff). Only the display face
+ * is preloaded — it carries the hero name, the LCP element (SPEC §15).
+ */
+interface Props {
+  title: string;
+  description: string;
+  /** Absolute URL for canonical + OG. Falls back to the current request URL. */
+  canonical?: string;
+  ogImage?: string;
+}
+
+const { title, description, canonical, ogImage } = Astro.props;
+
+const canonicalUrl =
+  canonical ?? new URL(Astro.url.pathname, Astro.site ?? Astro.url).href;
+const ogImageUrl = ogImage
+  ? new URL(ogImage, Astro.site ?? Astro.url).href
+  : undefined;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <Font cssVariable="--font-bodoni-moda" preload />
+    <Font cssVariable="--font-karla" />
+    <Font cssVariable="--font-plex-mono" />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalUrl} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
+
+    <meta
+      name="twitter:card"
+      content={ogImageUrl ? "summary_large_image" : "summary"}
+    />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+  </head>
+
+  <body class="min-h-screen bg-cool-stock font-body text-body-md text-ink-navy">
+    <FacetLattice />
+
+    {
+      /* BRAND §9 — keyboard-operable throughout. First tab stop on every page. */
+    }
+    <a
+      href="#main"
+      class="sr-only rounded-lg bg-card-face px-md py-sm text-ink-navy focus:not-sr-only focus:absolute focus:top-sm focus:left-sm focus:z-50"
+      >Skip to content</a
+    >
+
+    <SiteNav />
+
+    {
+      /* Rail is 80px on desktop; the shell clears it rather than overlapping. */
+    }
+    <div class="md:pl-20">
+      <main
+        id="main"
+        class="mx-auto w-full max-w-[1280px] px-md py-xl md:px-lg"
+      >
+        <slot />
+      </main>
+
+      <footer class="mx-auto w-full max-w-[1280px] px-md py-xl md:px-lg">
+        {/* Inset to the content column, never full-bleed (BRAND §4). */}
+        <div class="border-t border-deep-teal/10 pt-lg">
+          <p class="font-mono text-label-sm text-ink-muted uppercase">
+            {/* TODO(content): privacy note lands with #36. */}
+            <span>© {new Date().getFullYear()} Mark Hugh Neri</span>
+          </p>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>
