@@ -78,6 +78,16 @@ const EnvSchema = z
     CONTACT_FROM_EMAIL: z.email().default("hello@mh.neri.ph"),
     CONTACT_TO_EMAIL: z.email(),
     RESEND_ENABLED: boolish.default(false),
+    /**
+     * Where mail goes when RESEND_ENABLED is false (SPEC §12 — Mailpit at 1025).
+     *
+     * NOT in SPEC §10's variable list: §10 says "false in dev → log to console /
+     * Mailpit instead" without naming a host, and #20 requires the Mailpit path
+     * to work. Defaulted so `cp .env.example .env` still boots, and kept a
+     * variable rather than a constant so a non-default compose file or a CI
+     * container can point at its own SMTP sink. Worth adding to §10.
+     */
+    SMTP_URL: z.string().startsWith("smtp://").default("smtp://localhost:1025"),
 
     // Optional
     REDIS_URL: optional(z.string().startsWith("redis://")),
