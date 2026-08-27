@@ -1,19 +1,150 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
+import Button from "../components/Button.astro";
 import HeroCard from "../components/HeroCard.astro";
+import ProjectTile from "../components/ProjectTile.astro";
+import RankIndex from "../components/RankIndex.astro";
+import SuitGlyph from "../components/SuitGlyph.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { getHomeData } from "../lib/home";
+import { SUIT_CATEGORY } from "../lib/suits";
+
+const { projects, stackBySuit, settings } = await getHomeData();
+
+// SPEC §5 — cached, purged on any project mutation (#27).
+Astro.response.headers.set(
+  "Cache-Control",
+  "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
+);
+
+const thesis = settings["hero.thesis"] ?? "";
+const about = settings["about.body"] ?? "";
+const github = settings["social.github"];
+const linkedin = settings["social.linkedin"];
+
+// The hero card's stack list: featured items, in seed order.
+const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
 ---
 
-<BaseLayout
-  title="Mark Hugh Neri — full-stack engineer"
-  description="Full-stack developer and software engineer."
->
+<BaseLayout title="Mark Hugh Neri — full-stack engineer" description={thesis}>
   {
-    /* #14 builds the real home page; this places the hero so #13 is verifiable. */
+    /* ---- Hero (no rank; BRAND §6 ranks start at Selected work) ----
+      Row only at lg. At md the display face jumps to 96px (BRAND §3) while the
+      hero card is already 380px; side by side they overflow a 768px viewport by
+      ~21px — measured, not assumed. Below lg the card stacks under the name. */
   }
-  <div class="flex flex-col items-center gap-xl">
-    <h1 class="text-center font-display text-display-xl">Mark Hugh Neri</h1>
-    <HeroCard
-      stack={["TypeScript", "Astro", "PostgreSQL", "Prisma", "Docker"]}
-    />
-  </div>
+  <section
+    class="flex flex-col items-center gap-xl py-2xl lg:flex-row lg:justify-between"
+  >
+    <div class="flex max-w-[66ch] min-w-0 flex-col gap-lg">
+      <h1 class="font-display text-display-xl">Mark Hugh Neri</h1>
+      <p class="text-body-lg text-ink-muted">{thesis}</p>
+      <div class="flex flex-wrap gap-md">
+        <Button variant="primary" href="#work">View work</Button>
+        <Button variant="secondary" href="#contact">Send a message</Button>
+      </div>
+    </div>
+    <HeroCard stack={heroStack} />
+  </section>
+
+  {/* ---- A · Selected work ---- */}
+  <section id="work" class="flex flex-col gap-lg py-2xl">
+    <h2 class="flex items-baseline gap-md font-display text-headline-md">
+      <RankIndex rank="A" /> Selected work
+    </h2>
+    {
+      projects.length > 0 ? (
+        <ul class="grid list-none gap-lg sm:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project) => (
+            <li>
+              <ProjectTile
+                slug={project.slug}
+                sequence={project.sequence}
+                title={project.title}
+                suit={project.suit}
+                summary={project.summary}
+                stack={project.stack}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        /* BRAND §8 — empty states are invitations, not apologies. */
+        <p class="text-body-md text-ink-muted">
+          The first cards are still being dealt.
+        </p>
+      )
+    }
+  </section>
+
+  {/* ---- 2 · The stack ---- */}
+  <section id="stack" class="flex flex-col gap-lg py-2xl">
+    <h2 class="flex items-baseline gap-md font-display text-headline-md">
+      <RankIndex rank="2" /> The stack
+    </h2>
+    {/* Mono lists, no logo images (SPEC §5, BRAND §10). */}
+    <div class="grid gap-lg sm:grid-cols-2 lg:grid-cols-4">
+      {
+        stackBySuit.map((group) => (
+          <div class="flex flex-col gap-sm">
+            <h3 class="flex items-center gap-sm font-mono text-label-sm text-ink-navy uppercase">
+              <span class="text-metallic-gold">
+                <SuitGlyph suit={group.suit} class="h-3 w-3" />
+              </span>
+              {SUIT_CATEGORY[group.suit]}
+            </h3>
+            <ul class="flex flex-col gap-xs font-mono text-body-md text-ink-muted">
+              {group.items.map((item) => (
+                <li>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+
+  {/* ---- 3 · Background ---- */}
+  <section id="background" class="flex flex-col gap-lg py-2xl">
+    <h2 class="flex items-baseline gap-md font-display text-headline-md">
+      <RankIndex rank="3" /> Background
+    </h2>
+    {/* Prose capped at 66ch (BRAND §4). */}
+    <p class="max-w-[66ch] text-body-lg text-ink-muted">{about}</p>
+  </section>
+
+  {/* ---- K · Contact ---- */}
+  <section id="contact" class="flex flex-col gap-lg py-2xl">
+    <h2 class="flex items-baseline gap-md font-display text-headline-md">
+      <RankIndex rank="K" /> Contact
+    </h2>
+    {/* The form itself is #21; the links SPEC §5 asks for are here now. */}
+    <ul class="flex flex-wrap gap-lg">
+      {
+        github && (
+          <li>
+            <a
+              class="text-deep-teal underline underline-offset-4"
+              href={github}
+              rel="noopener noreferrer"
+            >
+              GitHub
+            </a>
+          </li>
+        )
+      }
+      {
+        linkedin && (
+          <li>
+            <a
+              class="text-deep-teal underline underline-offset-4"
+              href={linkedin}
+              rel="noopener noreferrer"
+            >
+              LinkedIn
+            </a>
+          </li>
+        )
+      }
+    </ul>
+  </section>
 </BaseLayout>
