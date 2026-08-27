@@ -62,6 +62,14 @@ const ogImageUrl = ogImage
     <Font cssVariable="--font-karla" />
     <Font cssVariable="--font-plex-mono" />
 
+    {
+      /* #40 — without this every page logs a 404 for /favicon.ico, which
+         Lighthouse counts under `errors-in-console` (Best Practices). An SVG
+         rather than an .ico: one file, scales to every size, and no binary
+         asset to regenerate. */
+    }
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonicalUrl} />

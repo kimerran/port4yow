@@ -28,7 +28,20 @@ const links = [
   <a
     href="/"
     class="flex h-11 min-w-11 items-center justify-center rounded px-sm font-mono text-index-rank text-ink-navy"
-    aria-label="Home — Mark Hugh Neri"><span aria-hidden="true">MHN</span></a
+    ><!--
+      WCAG 2.5.3 (Label in Name): the accessible name must CONTAIN the visible
+      text. This was `aria-label="Home — Mark Hugh Neri"` over an `aria-hidden`
+      "MHN", so the name did not include the label anyone can see — a
+      voice-control user saying "click MHN" could not activate it. Lighthouse
+      flags it as `label-content-name-mismatch`.
+
+      Now the visible text IS the start of the name, with the rest appended
+      out of sight. No `aria-label`, so the two cannot drift apart again.
+    -->MHN<span
+      class="sr-only"
+    >
+      — home, Mark Hugh Neri</span
+    ></a
   >
   <ul class="flex flex-col items-center gap-md">
     {
