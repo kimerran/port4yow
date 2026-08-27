@@ -1,0 +1,21 @@
+---
+/**
+ * BRAND §6 — sections are marked with card ranks, not numbers:
+ * `A` Selected work · `2` The stack · `3` Background · `K` Contact.
+ *
+ * Gold is a MARKER, never text (BRAND §2): at #D4AF37 on white it measures
+ * ~1.9:1 and fails WCAG badly. The rank is decorative and `aria-hidden`; the
+ * heading beside it carries the meaning. Bodoni is never set below 32px, so this
+ * renders at `headline-md` (32px), its floor.
+ */
+interface Props {
+  rank: "A" | "2" | "3" | "K";
+}
+
+const { rank } = Astro.props;
+---
+
+<span
+  class="font-display text-headline-md leading-none text-metallic-gold select-none"
+  aria-hidden="true">{rank}</span
+>

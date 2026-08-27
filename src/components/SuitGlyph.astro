@@ -2,9 +2,6 @@
 /**
  * BRAND §6 — suits are taxonomy, not ornament.
  *
- * MINIMAL version. #12 owns the full component (category labels, sizing variants,
- * the 180°-rotated tile placement). #10 needs it now because BRAND §7 specifies
- * suit-glyph links for the desktop rail, so the layout cannot render without it.
  *
  * Inline SVG, never an icon font — BRAND §6 removes the mock's Material Symbols
  * dependency, and §10 rejects icon fonts outright.
@@ -12,14 +9,16 @@
  * `aria-hidden` always: the glyph never carries meaning on its own. Every caller
  * pairs it with visible or screen-reader text (BRAND §6, §9).
  */
+import type { Suit } from "../lib/suits";
+
 interface Props {
-  suit: "diamonds" | "spades" | "hearts" | "clubs";
+  suit: Suit;
   class?: string;
 }
 
 const { suit, class: className = "h-4 w-4" } = Astro.props;
 
-const paths: Record<Props["suit"], string> = {
+const paths: Record<Suit, string> = {
   diamonds: "M12 2 L20 12 L12 22 L4 12 Z",
   spades:
     "M12 2 C12 2 4 9 4 14 a4 4 0 0 0 7 2.6 c-.2 2-.8 3.4-2 4.4 h6 c-1.2-1-1.8-2.4-2-4.4 A4 4 0 0 0 20 14 C20 9 12 2 12 2 Z",

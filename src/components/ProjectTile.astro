@@ -1,0 +1,77 @@
+---
+import Card from "./Card.astro";
+import { SUIT_CATEGORY, type Suit } from "../lib/suits";
+import SuitGlyph from "./SuitGlyph.astro";
+
+/**
+ * BRAND §7 — the project tile. The WHOLE tile is a single <a> to /work/[slug],
+ * so there is one link target rather than a nest of them.
+ *
+ * Title is Karla 700/18px, NOT the display face: BRAND §3 calls the mock's
+ * `font-headline-md text-body-lg` on tile titles a defect, because Bodoni's
+ * hairlines vanish below 32px and read as a rendering bug.
+ *
+ * Hover lifts 4px over 300ms and scales the image to 1.05 over 700ms. No flip,
+ * no rotation — the only rotation on the site is the hero card's deal.
+ */
+interface Props {
+  slug: string;
+  sequence: number;
+  title: string;
+  suit: Suit;
+  /** One-line outcome. */
+  summary: string;
+  /** Up to three, per BRAND §7. */
+  stack?: string[];
+}
+
+const { slug, sequence, title, suit, summary, stack = [] } = Astro.props;
+
+// Mono sequence numbers are a real ordering of the work (BRAND §6): 01, 02, …
+const index = String(sequence).padStart(2, "0");
+const chips = stack.slice(0, 3);
+---
+
+<Card href={`/work/${slug}`} interactive class="group flex flex-col">
+  {/* Sequence index, top-left, gold — a marker, never text (BRAND §2). */}
+  <span
+    class="absolute top-md left-md z-10 font-mono text-index-rank text-metallic-gold"
+    aria-hidden="true">{index}</span
+  >
+
+  {/* Image well. Rotated 180° exactly as a court card repeats itself. */}
+  <span
+    class="absolute right-md bottom-md z-10 rotate-180 text-metallic-gold"
+    aria-hidden="true"
+  >
+    <SuitGlyph suit={suit} />
+  </span>
+
+  <div class="h-1/2 w-full overflow-hidden bg-surface-sunken">
+    <div
+      class="h-full w-full transition-transform duration-700 group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none"
+    >
+      <slot name="image" />
+    </div>
+  </div>
+
+  <div class="flex flex-1 flex-col gap-sm p-md">
+    {/* Category as TEXT — never the glyph alone (BRAND §6). */}
+    <span class="sr-only">Category: {SUIT_CATEGORY[suit]}</span>
+
+    <h3 class="font-body text-body-lg leading-snug font-bold">{title}</h3>
+    <p class="text-body-md text-ink-muted">{summary}</p>
+
+    {
+      chips.length > 0 && (
+        <ul class="mt-auto flex flex-wrap gap-xs">
+          {chips.map((chip) => (
+            <li class="rounded border border-outline-variant px-sm py-xs font-mono text-label-sm text-ink-muted uppercase">
+              {chip}
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+</Card>
