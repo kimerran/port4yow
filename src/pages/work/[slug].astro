@@ -1,6 +1,7 @@
 ---
 import Card from "../../components/Card.astro";
 import JsonLd from "../../components/JsonLd.astro";
+import MarkdownBody from "../../components/MarkdownBody.astro";
 import ResponsiveImage from "../../components/ResponsiveImage.astro";
 import SuitGlyph from "../../components/SuitGlyph.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
@@ -122,14 +123,14 @@ const jsonLd = {
     </section>
 
     {
-      /* 4 · What I built — Markdown rendering is #16. Until it lands the body is
-        plain text, which Astro escapes by default and never reaches set:html. */
+      /* 4 · What I built — Markdown, sanitised by src/lib/markdown.ts (SPEC §14.6). */
     }
     <section class="flex flex-col gap-md">
       <h2 class="font-display text-headline-md">What I built</h2>
-      <p class="max-w-[66ch] text-body-md whitespace-pre-line text-ink-muted">
-        {project.body}
-      </p>
+      <MarkdownBody
+        markdown={project.body}
+        class="max-w-[66ch] text-body-md text-ink-muted"
+      />
     </section>
 
     {
