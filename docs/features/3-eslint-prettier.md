@@ -37,6 +37,35 @@ TypeScript-only.
   typescript-eslint **8.68.0**, eslint-plugin-astro **3.1.0**, eslint-plugin-jsx-a11y
   **6.10.2**, eslint-config-prettier **10.1.8**, globals **17.11.0**.
 
+## Review follow-up — round 1
+
+Three AGENT §3 "must never appear" entries were mechanically enforceable but unenforced, and
+all three linted clean on the first head. Now caught:
+
+| Pattern                                | Caught by                     |
+| -------------------------------------- | ----------------------------- |
+| `<div set:html={html}>`                | `astro/no-set-html-directive` |
+| `import ... from "node:child_process"` | `no-restricted-imports`       |
+| `process.env.X` outside the boundary   | `no-restricted-properties`    |
+
+**`astro/no-set-html-directive` ships with `eslint-plugin-astro` but is not in its
+`recommended` set** — confirmed by enumerating the config — so it has to be enabled by hand.
+It is the highest-value rule available here for free: #14, #16, #22 and the admin slices all
+render user-authored content, and this is what stops an unsanitised `set:html` reaching one of
+them. SPEC §14.6 permits `set:html` only on Markdown that has cleared `rehype-sanitize`, so
+#16 disables this rule on that single line with a justification rather than leaving the
+codebase unguarded.
+
+**Carve-outs, both verified rather than assumed:**
+
+- `astro.config.mjs` and `eslint.config.js` still read `process.env` legally — the rule is
+  scoped to `src/**`, and `astro.config.mjs` (the `PORT` wiring from #1) passes lint.
+- `src/lib/env.ts` is exempt because it _is_ the sanctioned boundary #7 creates. Confirmed a
+  file at that path passes while **any other** `src/` file reading `process.env` is rejected —
+  so the exemption is not silently blanket.
+
+All nine original bans re-checked afterwards and still fire.
+
 ## Decisions
 
 - **ESLint 10, not 9 — and this one is forced, not preferred.** The issue title and SPEC §2's

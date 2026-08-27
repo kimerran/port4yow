@@ -113,6 +113,55 @@ export default defineConfig(
     extends: [tseslint.configs.disableTypeChecked],
   },
 
+  {
+    // AGENT §3 — "`set:html` on unsanitised input" is on the must-never-appear
+    // list. The rule ships with eslint-plugin-astro but is NOT in its
+    // `recommended` set, so it has to be switched on explicitly. SPEC §14.6
+    // permits set:html only on Markdown that has passed rehype-sanitize; the
+    // slice that does that (#16) disables this rule on that one line with a
+    // justification, rather than leaving the whole codebase unguarded.
+    files: ["**/*.astro"],
+    rules: { "astro/no-set-html-directive": "error" },
+  },
+
+  {
+    // AGENT §3 — "`child_process` with interpolated input" and "`process.env.X`
+    // read without passing through `env.ts`".
+    //
+    // Scoped to src/ so build-time config (astro.config.mjs, eslint.config.js)
+    // stays free to read process.env — it legitimately does, for the PORT
+    // wiring from #1. src/lib/env.ts is exempt because it IS the sanctioned
+    // boundary that #7 creates; every other module goes through it (SPEC §10).
+    files: ["src/**/*.{ts,astro}"],
+    ignores: ["src/lib/env.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "node:child_process",
+              message: "AGENT §3 — child_process is banned.",
+            },
+            {
+              name: "child_process",
+              message: "AGENT §3 — child_process is banned.",
+            },
+          ],
+        },
+      ],
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "process",
+          property: "env",
+          message:
+            "AGENT §3 — read configuration through src/lib/env.ts, never process.env.",
+        },
+      ],
+    },
+  },
+
   // Must stay last: turns off every rule Prettier owns.
   prettier,
 );
