@@ -1,0 +1,23 @@
+# Anything not needed to build or run the server.
+#
+# AGENT §5 forbids committing `.env`, `dist/`, `src/generated/` and uploaded
+# media; this keeps them out of the build context too, so a stray local file
+# can never reach an image layer. `.env` is the one that matters: a secret baked
+# into a layer survives every later `rm`.
+.git
+.github
+.env
+.env.*
+!.env.example
+node_modules
+dist
+.astro
+src/generated
+coverage
+test-results
+playwright-report
+.playwright
+docs
+e2e
+*.md
+!README.md
