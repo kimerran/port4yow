@@ -1,4 +1,4 @@
-import { defineConfig, env } from "prisma/config";
+import { defineConfig } from "prisma/config";
 
 // Prisma 7 no longer loads .env automatically, and `env()` throws if the
 // variable is absent — so `pnpm db:migrate` fails before it starts. Node 24
@@ -24,12 +24,31 @@ if (process.env.NODE_ENV !== "production") {
  * `src/` — so AGENT §3's ban and #47's lint rule are both satisfied without an
  * exemption. `src/lib/env.ts` remains the boundary for application code.
  */
+/**
+ * `prisma generate` needs no database, but it loads this file — and Prisma's
+ * `env()` throws on a missing variable, so an eager datasource made the
+ * `postinstall` generate step fail anywhere DATABASE_URL is absent. That is
+ * exactly CI, where install runs before any database exists.
+ *
+ * Reading `process.env` directly is fine here: this file is outside `src/`, so
+ * AGENT §3's ban and #47's rule do not apply, and `src/lib/env.ts` remains the
+ * validated boundary for application code. Commands that genuinely need a
+ * connection (`migrate`, `db push`, `studio`) still fail loudly without it.
+ */
+const databaseUrl = process.env.DATABASE_URL;
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
-  datasource: {
-    url: env("DATABASE_URL"),
-    shadowDatabaseUrl: env("SHADOW_DATABASE_URL"),
-  },
+  ...(databaseUrl
+    ? {
+        datasource: {
+          url: databaseUrl,
+          ...(process.env.SHADOW_DATABASE_URL
+            ? { shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL }
+            : {}),
+        },
+      }
+    : {}),
   migrations: {
     path: "prisma/migrations",
     // Wired for #6. `prisma db seed` is what `pnpm db:seed` runs.

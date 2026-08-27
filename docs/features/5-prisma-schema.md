@@ -77,6 +77,28 @@ re-exercised underneath it — `validate` ✓, `generate` ✓, and `migrate depl
 **Remove the override when Prisma bumps `@prisma/config`.** Dependabot (#8) will surface
 that; the override is a floor, not a pin, so a fixed Prisma satisfies it without edits.
 
+## CI caught what local runs could not
+
+The first CI run failed, and it was a real defect local verification could never have found:
+I always had a `.env`.
+
+```
+> postinstall: prisma generate
+Failed to load config file ... PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL
+```
+
+`prisma generate` needs **no** database, but it loads `prisma.config.ts`, and Prisma's `env()`
+throws on a missing variable — so `pnpm install` failed anywhere `DATABASE_URL` was absent.
+That is exactly CI, and exactly a fresh clone before anyone writes a `.env`.
+
+The datasource is now applied conditionally, and `process.env` is read directly rather than
+through `env()`. That is legitimate here: this file is outside `src/`, so AGENT §3's ban and
+#47's rule do not apply, and `src/lib/env.ts` stays the validated boundary for application
+code. Commands that genuinely need a connection still fail loudly without one.
+
+Both paths verified: `generate` with `.env` removed and the variables unset succeeds;
+`migrate deploy` against a fresh database still applies every migration.
+
 ## Blocked
 
 Nothing.
