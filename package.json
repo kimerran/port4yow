@@ -21,11 +21,15 @@
     "test:e2e": "playwright test",
     "lint": "eslint . && prettier --check .",
     "typecheck": "astro check",
-    "audit": "pnpm audit --audit-level=moderate"
+    "audit": "pnpm audit --audit-level=moderate",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.4",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "astro": "^7.2.8",
+    "pg": "^8.23.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -33,6 +37,7 @@
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.4.0",
+    "@types/pg": "^8.23.1",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-astro": "^3.1.0",
@@ -41,9 +46,15 @@
     "prettier": "^3.9.6",
     "prettier-plugin-astro": "^0.14.1",
     "prettier-plugin-tailwindcss": "^0.8.1",
+    "prisma": "^7.10.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.68.0",
     "vitest": "^4.1.11"
+  },
+  "pnpm": {
+    "overrides": {
+      "deepmerge-ts": ">=8.0.0"
+    }
   }
 }
