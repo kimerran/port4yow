@@ -90,7 +90,14 @@ describe.skipIf(!enabled)("POST /api/contact", () => {
 
   const reset = async (): Promise<void> => {
     await db.contactMessage.deleteMany({});
-    await db.rateLimit.deleteMany({});
+    /**
+     * Scoped to this suite's own keys. A bare `deleteMany({})` wipes counters
+     * another integration suite is mid-way through exercising — it made #19's
+     * concurrency test see 11 allowed instead of 10 when both ran at once.
+     */
+    await db.rateLimit.deleteMany({
+      where: { key: { startsWith: "contact:" } },
+    });
     await fetch(`${MAILPIT}/messages`, { method: "DELETE" });
   };
 
@@ -341,7 +348,14 @@ describe.skipIf(!enabled)("mail outage", () => {
   it("still returns 200 and leaves the message retrievable", async () => {
     const { db } = await import("../../../lib/db");
     await db.contactMessage.deleteMany({});
-    await db.rateLimit.deleteMany({});
+    /**
+     * Scoped to this suite's own keys. A bare `deleteMany({})` wipes counters
+     * another integration suite is mid-way through exercising — it made #19's
+     * concurrency test see 11 allowed instead of 10 when both ran at once.
+     */
+    await db.rateLimit.deleteMany({
+      where: { key: { startsWith: "contact:" } },
+    });
     await fetch(`${MAILPIT}/messages`, { method: "DELETE" });
 
     // Point the transport at a port nothing is listening on, then re-import so
