@@ -1,5 +1,4 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "./env";
 
 /**
@@ -7,8 +6,9 @@ import { env } from "./env";
  * the same API either way.
  *
  * The bucket is PRIVATE and has no public policy. Nothing here ever hands the
- * storage host to a browser; `/api/media/[...key]` issues a short-lived
- * presigned redirect instead, so the origin stays ours.
+ * storage host to a browser: `/api/media/[...key]` STREAMS the bytes through our
+ * own origin. It used to 302 to a presigned URL, which handed the storage host
+ * to the browser and was blocked outright by `img-src 'self'` (see the route).
  *
  * Server-only: this module reads credentials and must never be imported from a
  * client script (AGENT §4).
@@ -24,32 +24,54 @@ const client = new S3Client({
   },
 });
 
-/** SPEC §9 — 5-minute TTL on the presigned URL. */
-export const PRESIGN_TTL_SECONDS = 300;
+/**
+ * How long a browser may cache a media response.
+ *
+ * A full year, and safe to be: keys are `projects/{projectId}/{ulid}-{width}.{ext}`
+ * (SPEC §9), so a key names one immutable object — new bytes get a new ULID and
+ * therefore a new URL. `immutable` tells the browser not to revalidate at all.
+ *
+ * This is the number the presigned-redirect design could not have. There, the
+ * cache lifetime had to stay strictly BELOW the 5-minute signature TTL, or a
+ * cached 302 replayed a `Location` whose signature had expired and the image
+ * 403'd. SPEC §9 asks for "a 5-minute TTL AND a long Cache-Control", which was
+ * unsatisfiable under a redirect and is trivially satisfiable under a proxy —
+ * there is no signature left to outlive.
+ */
+export const MEDIA_CACHE_SECONDS = 31_536_000;
+
+export interface StoredObject {
+  body: ReadableStream<Uint8Array>;
+  contentLength: number | null;
+  etag: string | null;
+}
 
 /**
- * How long a browser may cache the 302 itself.
+ * Streams one object out of the private bucket.
  *
- * MUST stay below PRESIGN_TTL_SECONDS. A cached redirect replays a stale
- * `Location`, and the presigned URL behind it 403s once its signature expires —
- * so a redirect that outlives its own signature serves broken images to
- * returning visitors, invisibly, until the redirect cache expires too.
- *
- * Derived rather than written twice; the invariant is asserted in the tests.
+ * The caller has already proved the key exists in `MediaAsset`; this does not
+ * re-authorise. It deliberately does NOT return the storage `Content-Type` —
+ * the route serves the `mimeType` recorded on the row, which was sniffed from
+ * magic bytes at upload (SPEC §9). Trusting the storage header here would let
+ * whatever put an object in the bucket choose the type the browser sniffs.
  */
-export const REDIRECT_CACHE_SECONDS = PRESIGN_TTL_SECONDS - 60;
-
-export function presignGet(
+export async function getObject(
   key: string,
   bucket = env.S3_BUCKET,
-): Promise<string> {
-  return getSignedUrl(
-    client,
+): Promise<StoredObject | null> {
+  const result = await client.send(
     new GetObjectCommand({ Bucket: bucket, Key: key }),
-    {
-      expiresIn: PRESIGN_TTL_SECONDS,
-    },
   );
+
+  if (!result.Body) return null;
+
+  return {
+    // The SDK types this as ReadableStream<any>; narrowing it here keeps the
+    // `any` from leaking into the route, which is what the lint rule is for.
+    body: result.Body.transformToWebStream() as ReadableStream<Uint8Array>,
+    contentLength: result.ContentLength ?? null,
+    etag: result.ETag ?? null,
+  };
 }
 
 /**

@@ -105,7 +105,17 @@ export function buildPicture(assets: AssetLike[]): Picture {
     src: mediaUrl(fallback.key),
     width: fallback.width,
     height: fallback.height,
-    blurDataUrl: fallback.blurDataUrl,
+    /**
+     * From whichever derivative actually carries it, NOT from the fallback.
+     *
+     * SPEC §9 generates one 16px LQIP per upload, so exactly one row in a
+     * derivative set holds `blurDataUrl` — and reading it off the fallback made
+     * the placeholder depend on which row #28 happens to write it to. If that is
+     * the 1920w WebP the blur renders; if it is a 480w row it silently does not.
+     * Either way nothing fails, which is what makes it worth pinning.
+     */
+    blurDataUrl:
+      assets.find((a) => a.blurDataUrl !== null)?.blurDataUrl ?? null,
     alt,
   };
 }

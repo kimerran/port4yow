@@ -103,3 +103,101 @@ because it is a BRAND colour decision, not an image concern.
 ## Content TODOs
 
 None.
+
+---
+
+## Review round 2 — findings addressed
+
+### Finding 1 · Every image was blocked by CSP and never rendered (fixed)
+
+The reviewer is right, and the correction matters beyond the bug: **the CLS and
+format-negotiation numbers in the section above were measured on a page where no
+image ever painted.** `currentSrc` is populated by srcset selection whether or
+not the fetch succeeds, so "Chrome chose `*.avif` at every width" was reading the
+selection, not a load. Zero layout shift is guaranteed for free when nothing
+loads. The evidence did not test what it claimed.
+
+Root cause is a three-slice composition failure: #33 set `img-src 'self' data:`
+per SPEC §14.2, #42 built the route as a 302 to a presigned URL, and #17 was the
+first consumer — so Chrome blocked every redirect target with
+`blockedReason: "csp"`.
+
+**`GET /api/media/[...key]` now streams the bytes through our own origin instead
+of redirecting.** The other option — adding the storage origin to `img-src` —
+was rejected: it weakens `default-src 'self'` to unblock a feature, which AGENT
+§1.2 forbids, and the origin is environment-dependent (`S3_ENDPOINT` differs on
+Railway).
+
+Proxying also resolves SPEC §9's _other_ self-contradiction. §9 asks for "a
+5-minute TTL AND a long `Cache-Control` on the redirect", which is unsatisfiable
+behind a signature — a cached 302 replays a `Location` whose signature has
+expired. With no signature left to outlive, `max-age=31536000, immutable` is
+simply correct, because a key names one immutable object
+(`{ulid}-{width}.{ext}`).
+
+**This changes the mechanism SPEC §9 names and should be ratified in the §9
+amendment, not treated as settled.** It is implemented this way because the CSP
+requirement and the storage-host sentence are only mutually satisfiable under a
+proxy.
+
+The route keeps the row lookup as the authorisation, serves `Content-Type` from
+the row rather than from the storage response (the row's `mimeType` was sniffed
+from magic bytes at upload), sends `nosniff`, and answers `If-None-Match` with a
+304 using the row checksum as the ETag.
+
+### Finding 2 · LQIP only rendered if the fallback row carried it (fixed)
+
+`blurDataUrl` now comes from whichever derivative actually holds it:
+
+```ts
+blurDataUrl: assets.find((a) => a.blurDataUrl !== null)?.blurDataUrl ?? null,
+```
+
+## Re-verified, with images that actually load
+
+Real AVIF and WebP fixtures (24 objects, 3 images × 4 widths × 2 formats) in
+MinIO, `blurDataUrl` set **only on the 480w rows** — the condition finding 2 says
+silently fails.
+
+| Check                                        | Result                         |
+| -------------------------------------------- | ------------------------------ |
+| CSP-blocked requests                         | **NONE** (was 3 × `Image:csp`) |
+| Images painted                               | 3/3, `naturalWidth > 0`        |
+| CLS at 375/2x, throttled, **images loading** | **0.0000**                     |
+| LQIP placeholders painted                    | 3/3                            |
+
+`naturalWidth` reads 345 rather than 960 because Chrome applies srcset density
+correction; the load signal is `> 0`, which is the same signal the review used.
+
+Proxy behaviour at the HTTP level:
+
+| Check                                                      | Result                                 |
+| ---------------------------------------------------------- | -------------------------------------- |
+| `Content-Type`                                             | `image/avif`, from the row             |
+| `Cache-Control`                                            | `public, max-age=31536000, immutable`  |
+| `ETag` / `If-None-Match`                                   | `"d2"` → **304**, 0 bytes              |
+| Bytes                                                      | 693 received, byte-identical to source |
+| `Location` header                                          | absent — no redirect                   |
+| Unknown key / traversal                                    | **404** / **404**                      |
+| `minio`, `amazonaws`, `X-Amz`, `9000`, `Signature` in page | **0** each                             |
+
+Candidate selection is unchanged with real bytes: 320→`480w`, 375→`480w`,
+768→`960w`, 1024→`960w`, 1440→`1440w`, 1920→`1440w`, no overflow at any width,
+rendered aspect ratio 1.778 against a natural 1.778.
+
+Mutation, measured by parsing the served HTML rather than grepping attributes:
+
+| State                               | LQIP placeholders |
+| ----------------------------------- | ----------------- |
+| fixed                               | **3**             |
+| `blurDataUrl: fallback.blurDataUrl` | **0**             |
+
+Gate re-run after the last edit: `typecheck` 0 errors / 0 warnings / 0 hints ·
+`lint` PASS · `test` **164** passed (8 files) · `build` PASS.
+
+### Storage API change
+
+`presignGet`, `PRESIGN_TTL_SECONDS` and `REDIRECT_CACHE_SECONDS` are gone —
+dead code on a security path is worse than none. `storage.test.ts`'s
+TTL-coupling invariant was replaced rather than relaxed, with a test asserting
+the removed exports stay removed so the coupling cannot quietly return.
