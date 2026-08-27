@@ -17,7 +17,7 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force && pnpm db:seed",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:e2e": "playwright test",
     "lint": "eslint . && prettier --check .",
     "typecheck": "astro check",

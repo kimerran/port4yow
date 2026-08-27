@@ -1,12 +1,20 @@
 # SPEC §14.12 — dependency updates on a weekly schedule.
+#
+# target-branch is REQUIRED. Without it Dependabot falls back to the repository
+# default branch, which is `main` — a branch auto-dev.md documents as not written
+# to, and which currently has no package.json at all. Bumps would be computed
+# against nothing and land somewhere nobody merges from. Same reasoning that makes
+# `--base develop` mandatory for every PR in auto-dev.md.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
   - package-ecosystem: github-actions
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly

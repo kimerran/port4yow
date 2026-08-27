@@ -18,6 +18,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # A wedged step otherwise runs to GitHub's 6-hour default before failing.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,6 +56,7 @@ jobs:
   # code checks pass, and it should be legible as its own red X (SPEC §14.8).
   gitleaks:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:

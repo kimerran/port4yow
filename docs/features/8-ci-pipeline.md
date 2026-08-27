@@ -42,6 +42,28 @@ runner — a CI file that has never executed is unverified.
   client generation runs in `postinstall` (#5), so turning it off globally would break the
   build the moment #5 lands. Better addressed per-package when it matters.
 
+## Review follow-up — round 1
+
+**Dependabot would have opened every PR against `main`.** No `target-branch`, so both
+ecosystems fall back to the repository default — and `main` is 15 commits behind `develop`
+with **no `package.json` at all**, so npm bumps would have been computed against nothing and
+landed on a branch nobody merges from. `target-branch: develop` on both. This is the
+automated form of the mistake `auto-dev.md` already warns about for `--base develop`.
+
+**`timeout-minutes` added** — 15 on `verify`, 10 on `gitleaks`. A wedged step otherwise runs
+to GitHub's 6-hour default.
+
+**`--passWithNoTests` moved out of `package.json`.** SPEC §12 specifies `"test": "vitest run"`
+verbatim and the flag changed it. It now lives in `vitest.config.ts`, so the script is
+byte-identical to the spec and the workaround sits where #37 will find it rather than being
+inherited as a silently-green `pnpm test`. The caveat stands and is written into the config
+comment: any slice that forgets tests still passes until #37 deletes the flag.
+
+**Verification note for the next slice:** the gate went red on all four steps after these
+edits, and none of it was the code — `node_modules` was stale from working on #49's branch
+and switching back without reinstalling. `pnpm install --frozen-lockfile` after any branch
+switch, before believing a failure.
+
 ## Blocked
 
 Nothing.
