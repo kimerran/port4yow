@@ -75,11 +75,11 @@ const FIELD_LABELS: Record<string, string> = {
           aria-live="polite"
         />
 
-        <ol id="project-order" class="flex flex-col gap-sm">
+        <ol data-reorder-list="projects" class="flex flex-col gap-sm">
           {rows.map((row, index) => (
             <li
               class="flex flex-wrap items-center gap-md rounded-lg border border-deep-teal/15 bg-card-face p-md card-shadow"
-              data-project-id={row.id}
+              data-item-id={row.id}
               data-sequence={row.sequence}
             >
               <span class="font-mono text-index-rank text-ink-navy">
@@ -150,7 +150,7 @@ const FIELD_LABELS: Record<string, string> = {
           action={actions.reorderProjects}
           class="flex gap-md"
         >
-          <span data-ordered-ids>
+          <span data-ordered-ids="projects">
             {rows.map((row) => (
               <input type="hidden" name="orderedIds" value={row.id} />
             ))}
@@ -163,6 +163,6 @@ const FIELD_LABELS: Record<string, string> = {
 </AdminLayout>
 
 <script>
-  import { initProjectReorder } from "../../../scripts/project-reorder.ts";
-  initProjectReorder();
+  import { initListReorder } from "../../../scripts/list-reorder.ts";
+  initListReorder();
 </script>
