@@ -54,6 +54,15 @@ const REDACTED = "[redacted]";
  * reply-to. It reaches the log under the key `reason`, which is not an email
  * key, so every filter above passes it through.
  *
+ * The pattern is narrower than RFC 5322 — no unicode local parts, no quoted
+ * strings, no TLD-less hosts. That is not a gap **today** for the path this
+ * exists to cover: the address in an SMTP rejection is the visitor's reply-to,
+ * which entered through `contact.ts`'s `z.email()`, and zod refuses every shape
+ * this regex would miss (`a@localhost`, `visiteur@exämple.com`,
+ * `first!last@example.com`, `"odd name"@example.com` are all rejected there).
+ * The two definitions agree by coincidence rather than by construction, so
+ * **loosening the validator reopens this** — widen the mask in the same commit.
+ *
  * Deliberately not matched: bare IP addresses in the same position. The only
  * IP-shaped strings that reach a log line here come from driver errors naming
  * our own database host, which is the useful half of the message; a client

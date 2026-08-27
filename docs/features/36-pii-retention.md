@@ -167,3 +167,61 @@ Nothing.
 
 None. The privacy note is final copy, not placeholder — it makes factual claims
 about this system, and every claim in it is true of the code as merged.
+
+---
+
+## Review round 2
+
+### The defect: `/privacy` rendered "(2years)"
+
+Correct, and the wrong place in the repo to have a typo — it is the public
+promise itself, in the first sentence a visitor reads about retention, on a page
+whose PR body claimed the copy was final.
+
+Astro drops the newline **after** an expression in a text node, so
+`({years}\n years)` served as `(2years)`. The expression and its unit now share
+a line, which leaves the newline nothing to swallow.
+
+The review's sharper point is why it got through: _"Your verification table
+checks `/privacy` 200 and axe 0 violations — neither can see a missing space."_
+Both facts were true and neither was the relevant measurement. Fixed twice over:
+
+- **Checked against rendered bytes**, the way the review checked it —
+  `curl /privacy` now yields `(2 years)`, with `2years` appearing **0** times.
+- **`src/__tests__/astro-text-whitespace.test.ts`** scans every `.astro` file
+  for the shape — an expression ending a line of prose followed by more prose.
+  Repo-wide there was exactly **one** occurrence, this one. Prettier is on the
+  hazard's side here: the wrap is what creates the bug, so a formatter can
+  reintroduce it silently. Reinstating the exact shipped defect fails the suite
+  (1 of 3); the suite also asserts it scanned a non-empty file list and re-runs
+  its own detector against the shipped line, so it cannot decay into a no-op.
+
+### `years` assumes whole years
+
+Noted in the comment above the constant: at 24 it is exact; 18 would render
+"1.5 years" and 12 "1 years". Not generalised — worth knowing before the
+constant moves.
+
+### The mask covers what `z.email()` admits — by coincidence
+
+The four shapes the review got past `EMAIL_IN_TEXT` are all rejected by
+`contact.ts`'s `z.email()`, so none is reachable. That agreement is between two
+independent definitions, not a designed invariant, so the comment now says so
+explicitly: **loosening the validator reopens this, and the mask must widen in
+the same commit.**
+
+Thanks for the property check on the clamp — 213 dates is a better answer than
+the single leap-day example I had — and for confirming the `g`-flag and
+depth-limit failure modes, which I had not separately verified.
+
+### Re-verified
+
+| Check                            | Result                               |
+| -------------------------------- | ------------------------------------ |
+| rendered `/privacy`              | `deleted after 24 months (2 years).` |
+| `2years` in the response         | **0**                                |
+| whitespace hazards repo-wide     | **0** (was 1)                        |
+| guard catches the shipped defect | reinstating it fails 1 of 3          |
+
+Gate: `typecheck` 0/0/0 · `lint` PASS · `test` **481 passed, 115 skipped** ·
+`test:integration` **115 passed** · `build` PASS.

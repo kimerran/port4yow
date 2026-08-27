@@ -23,6 +23,20 @@ import { RETENTION_MONTHS } from "../jobs/index.ts";
  * collected, what is done to it, how long it stays, and how to have it removed.
  * Anything longer would be padding, and padding is what makes these unread.
  */
+/**
+ * Kept on one line with its unit in the markup below, deliberately.
+ *
+ * Astro drops the newline *after* an expression in a text node, so
+ * `({years}\n years)` served as `(2years)` — a missing space in the one
+ * sentence on this page that is a promise. Nothing in the verification could
+ * see it: the page still answered 200 and axe still found nothing, because a
+ * missing space is neither a status code nor an accessibility violation.
+ *
+ * `RETENTION_MONTHS / 12` also assumes the window is a whole number of years.
+ * At 24 it is; an 18-month window would render "1.5 years" and a 12-month one
+ * "1 years". Not worth generalising for a constant that is unlikely to move,
+ * but worth knowing before moving it.
+ */
 const years = RETENTION_MONTHS / 12;
 ---
 
@@ -56,9 +70,9 @@ const years = RETENTION_MONTHS / 12;
 
     <h2 class="text-headline-sm font-display">How long it is kept</h2>
     <p>
-      Contact messages are deleted after {RETENTION_MONTHS} months ({years}
-      years). That is not a policy someone remembers to apply: a scheduled job runs
-      monthly and deletes everything past the cutoff.
+      Contact messages are deleted after {RETENTION_MONTHS} months ({years} years).
+      That is not a policy someone remembers to apply: a scheduled job runs monthly
+      and deletes everything past the cutoff.
     </p>
 
     <h2 class="text-headline-sm font-display">Where it goes</h2>
