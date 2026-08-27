@@ -24,7 +24,7 @@
     "typecheck": "astro check",
     "audit": "pnpm audit --audit-level=moderate",
     "postinstall": "prisma generate",
-    "test:integration": "RATELIMIT_IT=1 CONTACT_IT=1 LOGIN_IT=1 PROJECTS_IT=1 STACK_IT=1 UPLOAD_IT=1 MESSAGES_IT=1 SEO_IT=1 JOBS_IT=1 vitest run --no-file-parallelism src/lib/__tests__/ratelimit.integration.test.ts src/pages/api/__tests__/contact.integration.test.ts src/lib/__tests__/login.integration.test.ts src/lib/__tests__/projects.integration.test.ts src/lib/__tests__/stack.integration.test.ts src/lib/__tests__/upload.integration.test.ts src/lib/__tests__/messages.integration.test.ts src/jobs/__tests__/jobs.integration.test.ts"
+    "test:integration": "RATELIMIT_IT=1 CONTACT_IT=1 LOGIN_IT=1 PROJECTS_IT=1 STACK_IT=1 UPLOAD_IT=1 MESSAGES_IT=1 SEO_IT=1 JOBS_IT=1 vitest run --no-file-parallelism src/lib/__tests__/ratelimit.integration.test.ts src/pages/api/__tests__/contact.integration.test.ts src/lib/__tests__/login.integration.test.ts src/lib/__tests__/projects.integration.test.ts src/lib/__tests__/stack.integration.test.ts src/lib/__tests__/upload.integration.test.ts src/lib/__tests__/messages.integration.test.ts src/pages/__tests__/seo.integration.test.ts src/jobs/__tests__/jobs.integration.test.ts"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.4",

@@ -41,6 +41,18 @@ const canonical = new URL(`/work/${project.slug}`, Astro.site ?? Astro.url)
 /* SPEC §5 — article JSON-LD. The set:html exception and the `<` escaping that
    makes it safe both live in JsonLd.astro, so this file never touches raw HTML. */
 
+/**
+ * #34 — a per-project OG image, served through our own origin like every other
+ * image (#42). Absolute, because a scraper does not resolve relative URLs.
+ *
+ * `coverKey` is the widest WebP: #17 picks its fallback `<img src>` from the
+ * non-AVIF rows, and an OG image has to be the format every scraper decodes, so
+ * pointing at an AVIF row would be exactly the wrong choice.
+ */
+const ogImage = project.coverKey
+  ? new URL(`/api/media/${project.coverKey}`, Astro.site ?? Astro.url).href
+  : undefined;
+
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "Article",
@@ -48,9 +60,16 @@ const jsonLd = {
   description: project.summary,
   url: canonical,
   author: { "@type": "Person", name: "Mark Hugh Neri" },
+  ...(ogImage ? { image: ogImage } : {}),
   ...(project.publishedAt
     ? { datePublished: project.publishedAt.toISOString() }
     : {}),
+  /**
+   * `dateModified` matters more than it looks: a crawler uses it to decide
+   * whether to re-fetch, and an Article without one is treated as never having
+   * changed since it was first seen.
+   */
+  dateModified: project.updatedAt.toISOString(),
 };
 ---
 
@@ -58,6 +77,9 @@ const jsonLd = {
   title={`${project.title} — Mark Hugh Neri`}
   description={project.summary}
   canonical={canonical}
+  ogImage={ogImage}
+  ogImageAlt={project.coverAlt ?? undefined}
+  ogType="article"
 >
   <JsonLd data={jsonLd} />
 

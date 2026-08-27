@@ -18,6 +18,12 @@ export interface ProjectDetail {
   repoUrl: string | null;
   stack: string[];
   publishedAt: Date | null;
+  /** Drives `dateModified` in the Article JSON-LD (#34). */
+  updatedAt: Date;
+  /** The cover's media key, for the per-project OG image (#34). */
+  coverKey: string | null;
+  /** The cover's alt text — an OG image without one is an unlabelled picture. */
+  coverAlt: string | null;
   /** Inline screenshots, each with every derivative that exists for it. */
   images: { caption: string | null; assets: AssetLike[] }[];
 }
@@ -49,6 +55,13 @@ export async function getPublishedProject(
       liveUrl: true,
       repoUrl: true,
       publishedAt: true,
+      updatedAt: true,
+      /**
+       * #34 — a per-project OG image. The widest WebP row is what #17 picks as
+       * its fallback `<img src>`, and an OG image has to be the one format every
+       * scraper decodes, so an AVIF row would be exactly the wrong choice here.
+       */
+      coverImage: { select: { key: true, altText: true } },
       stack: {
         orderBy: { sortOrder: "asc" },
         select: { stackItem: { select: { name: true } } },
@@ -107,6 +120,8 @@ export async function getPublishedProject(
   return {
     ...project,
     suit: suitFromEnum(project.suit),
+    coverKey: project.coverImage?.key ?? null,
+    coverAlt: project.coverImage?.altText ?? null,
     stack: project.stack.map((s) => s.stackItem.name),
     images: project.images.map((image) => {
       const stem = derivativeStem(image.asset.key);
