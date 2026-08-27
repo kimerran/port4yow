@@ -62,8 +62,14 @@ vi.mock("../logger", () => ({
   },
 }));
 
-const { consume, hashIp, rateLimitKey, RATE_LIMITS, CONTACT_GLOBAL } =
-  await import("../ratelimit");
+const {
+  consume,
+  hashIp,
+  rateLimitKey,
+  clientIpFrom,
+  RATE_LIMITS,
+  CONTACT_GLOBAL,
+} = await import("../ratelimit");
 
 beforeEach(() => {
   store.clear();
@@ -255,5 +261,59 @@ describe("fails closed", () => {
     await expect(consume("contact", ip(600))).rejects.toThrow(
       /returned no row/,
     );
+  });
+});
+
+/**
+ * Behind a proxy the socket address is the PROXY, identical for every visitor,
+ * so a per-IP limit keyed on it has one bucket for the whole internet. This is
+ * the only place that reads the header — login (#25) and upload key on the same
+ * value and must come through here.
+ */
+describe("clientIpFrom", () => {
+  const req = (headers: Record<string, string> = {}): Request =>
+    new Request("https://mh.neri.ph/api/contact", { method: "POST", headers });
+
+  it("uses the socket address when there is no proxy header", () => {
+    expect(clientIpFrom(req(), "203.0.113.1")).toBe("203.0.113.1");
+  });
+
+  it("takes the ORIGINAL client, not the nearest proxy", () => {
+    // Left to right: client, then each proxy that forwarded it.
+    expect(
+      clientIpFrom(
+        req({ "x-forwarded-for": "203.0.113.1, 70.41.3.18, 150.172.238.178" }),
+        "10.0.0.1",
+      ),
+    ).toBe("203.0.113.1");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(
+      clientIpFrom(
+        req({ "x-forwarded-for": "  203.0.113.1 , 10.0.0.2" }),
+        "10.0.0.1",
+      ),
+    ).toBe("203.0.113.1");
+  });
+
+  it.each([
+    ["an empty header", ""],
+    ["a header of only a comma", ","],
+    ["a header of only spaces", "   "],
+  ])("falls back to the socket address for %s", (_label, value) => {
+    expect(clientIpFrom(req({ "x-forwarded-for": value }), "203.0.113.9")).toBe(
+      "203.0.113.9",
+    );
+  });
+
+  it("separates distinct forwarded clients into distinct buckets", () => {
+    const hashes = new Set(
+      ["203.0.113.10", "198.51.100.20", "192.0.2.30"].map((ip) =>
+        hashIp(clientIpFrom(req({ "x-forwarded-for": ip }), "10.0.0.1")),
+      ),
+    );
+    // The regression: keyed on the socket address this set had size 1.
+    expect(hashes.size).toBe(3);
   });
 });
