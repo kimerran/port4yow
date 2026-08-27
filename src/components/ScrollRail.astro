@@ -1,0 +1,48 @@
+---
+/**
+ * BRAND §7 — 2px `deep-teal` line carrying one slight sine curve.
+ *
+ * `variant="rail"` sits at the base of the 80px desktop rail (vertical);
+ * `variant="bar"` is the 2px top progress bar on mobile (horizontal).
+ *
+ * aria-hidden: it duplicates information the scrollbar already conveys, so it is
+ * decoration to assistive technology (BRAND §6/§9).
+ */
+interface Props {
+  variant: "rail" | "bar";
+}
+
+const { variant } = Astro.props;
+
+// One slight sine curve — a dragon second, a progress indicator first.
+const path =
+  variant === "rail"
+    ? "M1 0 C5 40, -3 80, 1 120 S5 200, 1 240"
+    : "M0 1 C40 5, 80 -3, 120 1 S200 5, 240 1";
+const viewBox = variant === "rail" ? "0 0 6 240" : "0 0 240 6";
+const sizing = variant === "rail" ? "h-full w-1.5" : "h-1.5 w-full";
+---
+
+<svg
+  class={sizing}
+  viewBox={viewBox}
+  preserveAspectRatio="none"
+  fill="none"
+  aria-hidden="true"
+  focusable="false"
+>
+  {
+    /* Track: the same curve at low opacity, so the unfilled portion still reads. */
+  }
+  <path
+    d={path}
+    stroke="var(--color-deep-teal)"
+    stroke-opacity="0.1"
+    stroke-width="2"></path>
+  <path
+    data-scroll-rail-fill
+    d={path}
+    stroke="var(--color-deep-teal)"
+    stroke-width="2"
+    stroke-linecap="round"></path>
+</svg>

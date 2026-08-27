@@ -1,4 +1,5 @@
 ---
+import ScrollRail from "./ScrollRail.astro";
 import SuitGlyph from "./SuitGlyph.astro";
 
 /**
@@ -44,6 +45,13 @@ const links = [
       ))
     }
   </ul>
+
+  {/* BRAND §7 — the rail sits at the BASE of the left rail. */}
+  <div class="mt-auto flex w-full justify-center pb-lg">
+    <div class="h-40">
+      <ScrollRail variant="rail" />
+    </div>
+  </div>
 </nav>
 
 {/* Mobile: 56px sticky top bar. */}
@@ -72,3 +80,8 @@ const links = [
     }
   </ul>
 </nav>
+
+{/* Mobile: the rail becomes a 2px top progress bar (BRAND §7). */}
+<div class="sticky top-14 z-20 md:hidden">
+  <ScrollRail variant="bar" />
+</div>
