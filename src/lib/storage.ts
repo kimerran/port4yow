@@ -1,4 +1,9 @@
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { env } from "./env";
 
 /**
@@ -72,6 +77,38 @@ export async function getObject(
     contentLength: result.ContentLength ?? null,
     etag: result.ETag ?? null,
   };
+}
+
+/**
+ * Stores one object (#28).
+ *
+ * The `ContentType` comes from the caller, which sniffed it from the file's own
+ * bytes — never from a client-supplied header. #42 serves the type from the
+ * `MediaAsset` row rather than from here, so this value is a convenience for
+ * anything reading the bucket directly, not a trust boundary.
+ */
+export async function putObject(
+  key: string,
+  body: Uint8Array,
+  contentType: string,
+  bucket = env.S3_BUCKET,
+): Promise<void> {
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  );
+}
+
+/** Removes one object. Deleting something already gone is not an error in S3. */
+export async function deleteObject(
+  key: string,
+  bucket = env.S3_BUCKET,
+): Promise<void> {
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 /**

@@ -41,6 +41,26 @@ export default defineConfig({
     checkOrigin: true,
 
     /**
+     * SPEC §9 allows an 8 MB upload. Astro refuses an Action body over
+     * `actionBodySizeLimit` BEFORE the handler runs, and its default is 1 MiB —
+     * so without this, every upload between 1 MB and 8 MB was rejected with a
+     * raw `CONTENT_TOO_LARGE`, which is most of the range the spec allows and
+     * squarely where real screenshots live. Measured: a valid 5.43 MB JPEG got
+     * `413 Request body exceeds 1048576 bytes` and `processUpload` never ran,
+     * so the app's own 8 MB check and its error copy were dead code.
+     *
+     * 9 MiB, not a round 8: multipart adds boundaries and field names, so a
+     * body carrying an 8 MiB file is slightly larger than the file. The
+     * headroom is deliberately small — a wildly oversized body is still refused
+     * cheaply here, while every legitimate file reaches the app's check, which
+     * is the one that should decide and the one that explains itself.
+     *
+     * `src/lib/__tests__/uploadlimits.test.ts` asserts this stays above
+     * `MAX_UPLOAD_BYTES`, so the two cannot drift apart silently again.
+     */
+    actionBodySizeLimit: 9 * 1024 * 1024,
+
+    /**
      * SPEC §14.2 — CSP through Astro's own API rather than hand-rolled header
      * strings (AGENT §2). Its real value is that it hashes every inline script
      * and style Astro emits, so `unsafe-inline` is never needed.

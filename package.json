@@ -23,7 +23,7 @@
     "typecheck": "astro check",
     "audit": "pnpm audit --audit-level=moderate",
     "postinstall": "prisma generate",
-    "test:integration": "RATELIMIT_IT=1 CONTACT_IT=1 LOGIN_IT=1 PROJECTS_IT=1 STACK_IT=1 vitest run --no-file-parallelism src/lib/__tests__/ratelimit.integration.test.ts src/pages/api/__tests__/contact.integration.test.ts src/lib/__tests__/login.integration.test.ts src/lib/__tests__/projects.integration.test.ts src/lib/__tests__/stack.integration.test.ts"
+    "test:integration": "CONTACT_IT=1 LOGIN_IT=1 PROJECTS_IT=1 RATELIMIT_IT=1 STACK_IT=1 UPLOAD_IT=1 vitest run --no-file-parallelism src/lib/__tests__/ratelimit.integration.test.ts src/pages/api/__tests__/contact.integration.test.ts src/lib/__tests__/login.integration.test.ts src/lib/__tests__/projects.integration.test.ts src/lib/__tests__/upload.integration.test.ts src/lib/__tests__/stack.integration.test.ts"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.4",
@@ -40,6 +40,8 @@
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
     "resend": "^6.24.0",
+    "sharp": "^0.35.4",
+    "ulid": "^3.0.2",
     "unified": "^11.0.5",
     "zod": "^4.4.3"
   },

@@ -15,7 +15,16 @@ import {
   updateStackItem,
 } from "../lib/stack";
 import { SUIT_ENUM_VALUES } from "../lib/suits";
+import { consume } from "../lib/ratelimit";
 import { db } from "../lib/db";
+import {
+  AssetInUse,
+  MAX_UPLOAD_BYTES,
+  UploadRejected,
+  deleteAssetGroup,
+  processUpload,
+  updateAltText as updateAssetAltText,
+} from "../lib/upload";
 import {
   PublishBlockedError,
   ReorderMismatchError,
@@ -85,7 +94,9 @@ function toActionError(cause: unknown): never {
     cause instanceof DuplicateStackName ||
     cause instanceof StackItemInUse ||
     cause instanceof StackItemNotFound ||
-    cause instanceof ReorderMismatch
+    cause instanceof ReorderMismatch ||
+    cause instanceof UploadRejected ||
+    cause instanceof AssetInUse
   ) {
     throw new ActionError({ code: "BAD_REQUEST", message: cause.message });
   }
@@ -356,6 +367,88 @@ export const server = {
       try {
         await reorderStackItems(input.suit, input.orderedIds);
         return { ok: true };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  /**
+   * Uploads one image (#28).
+   *
+   * `accept: "form"` so the file arrives as a real multipart upload from a form
+   * that needs no JavaScript. Every validation lives in `processUpload`, which
+   * reads the file's own bytes — nothing here trusts the filename or the
+   * client-supplied `Content-Type`.
+   */
+  uploadMedia: defineAction({
+    accept: "form",
+    input: z.object({
+      projectId: z.string().min(1),
+      altText: z.string().min(1).max(500),
+      file: z
+        .instanceof(File)
+        // The size check is repeated in processUpload against the bytes we
+        // actually read. This one refuses earlier, on the declared length, so an
+        // oversized body is not buffered any further than it already was.
+        .refine((file) => file.size <= MAX_UPLOAD_BYTES, {
+          message: "That file is larger than 8 MB.",
+        }),
+    }),
+    handler: async (input, context) => {
+      const user = requireAdmin(context);
+
+      /**
+       * SPEC §14.9 — 30 uploads/hour/session. Keyed on the user id rather than
+       * an IP: the limit is per SESSION in the spec, and an admin behind a
+       * changing IP should not get a fresh budget by reconnecting.
+       */
+      const limit = await consume("upload", user.id);
+      if (!limit.allowed) {
+        throw new ActionError({
+          code: "TOO_MANY_REQUESTS",
+          message: `That is a lot of uploads. Try again in ${String(Math.ceil(limit.retryAfterSeconds / 60))} minutes.`,
+        });
+      }
+
+      try {
+        const bytes = new Uint8Array(await input.file.arrayBuffer());
+        return await processUpload({
+          bytes,
+          projectId: input.projectId,
+          altText: input.altText,
+        });
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  updateAltText: defineAction({
+    accept: "form",
+    input: z.object({
+      keyStem: z.string().min(1).max(256),
+      altText: z.string().min(1).max(500),
+    }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        const updated = await updateAssetAltText(input.keyStem, input.altText);
+        return { updated };
+      } catch (cause) {
+        return toActionError(cause);
+      }
+    },
+  }),
+
+  deleteMedia: defineAction({
+    accept: "form",
+    input: z.object({ keyStem: z.string().min(1).max(256) }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      try {
+        const deleted = await deleteAssetGroup(input.keyStem);
+        return { deleted };
       } catch (cause) {
         return toActionError(cause);
       }
