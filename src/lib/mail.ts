@@ -100,6 +100,39 @@ const getResend = (): Resend => {
 };
 
 /**
+ * Records the send where the guard above reads it.
+ *
+ * This is the other half of the idempotency invariant, and it has to live here.
+ * With only the READ in this module, a caller that forgot to persist `resendId`
+ * broke the guarantee completely — two sends of one id delivered two emails,
+ * and the Resend `idempotencyKey` masked it on the Resend path so the failure
+ * showed up only on SMTP, the path the acceptance criterion is measured on.
+ *
+ * Never throws. The email has already gone out by the time this runs, so a
+ * failure here must not turn a delivered message into a request-path error —
+ * but it IS logged at `error`, because the consequence is that a retry will
+ * double-send, and that deserves to be visible.
+ */
+async function recordSent(
+  messageId: string,
+  providerId: string,
+  correlationId?: string,
+): Promise<void> {
+  try {
+    await db.contactMessage.update({
+      where: { id: messageId },
+      data: { resendId: providerId, deliveredAt: new Date() },
+    });
+  } catch (cause) {
+    logger.error("contact email sent but not recorded", {
+      correlation_id: correlationId,
+      message_id: messageId,
+      reason: cause instanceof Error ? cause.message : "unknown",
+    });
+  }
+}
+
+/**
  * Sends the contact notification.
  *
  * NEVER THROWS. A provider failure is logged at `error` with the correlation id
@@ -107,10 +140,12 @@ const getResend = (): Resend => {
  * as undelivered and still answer the submitter (SPEC §7). A contact form that
  * 500s because the mail provider is down has lost the message twice.
  *
- * Idempotency is the `ContactMessage` id, enforced on two levels: a durable
- * `resendId` check before dispatch (both backends), and Resend's own
- * `idempotencyKey` (production only), which also covers a crash between sending
- * and persisting — the window the durable check cannot see.
+ * Idempotency is the `ContactMessage` id, and this module owns BOTH halves of
+ * it: it reads `resendId` before dispatch and writes it after, so a caller that
+ * never persists anything still cannot produce two emails. Resend's
+ * `idempotencyKey` sits underneath as a third line on the production path,
+ * covering the crash window between dispatch and the write — the one gap the
+ * durable check genuinely cannot see.
  */
 export async function sendContactEmail(
   input: ContactEmail,
@@ -176,6 +211,7 @@ export async function sendContactEmail(
         return { ok: false, error: error?.message ?? "no data" };
       }
 
+      await recordSent(input.messageId, data.id, correlationId);
       return { ok: true, providerId: data.id, backend: "resend" };
     }
 
@@ -193,6 +229,7 @@ export async function sendContactEmail(
       messageId: `<${input.messageId}@mh.neri.ph>`,
     });
 
+    await recordSent(input.messageId, info.messageId, correlationId);
     return { ok: true, providerId: info.messageId, backend: "smtp" };
   } catch (cause) {
     logger.error("contact email failed", {

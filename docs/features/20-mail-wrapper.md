@@ -118,3 +118,68 @@ Nothing blocks this issue.
 ## Content TODOs
 
 None.
+
+---
+
+## Review round 2 — finding addressed
+
+### The idempotency invariant was half-owned (fixed)
+
+The reviewer is right, and the sharpest part is what it says about the test. The
+handoff above claimed:
+
+> The check lives in this module rather than in the caller on purpose — "sending
+> twice with the same id results in one email" is a property of this module, and
+> a caller that forgets the check should not be able to break it.
+
+The **read** was in the module. The **write** was not. `sendContactEmail` never
+set `resendId`, so a caller that forgot to persist it got two emails from two
+sends — and the test that "proved" idempotency wrote `resendId` itself between
+the two calls. It was measuring the caller doing its part, not the module
+guaranteeing anything.
+
+Worse, the Resend `idempotencyKey` masked it on the Resend path, so the failure
+only showed on **SMTP** — the exact path the acceptance criterion was measured
+on.
+
+`recordSent` now writes `resendId` and `deliveredAt` immediately after each
+successful dispatch, in both backends, so the module owns both halves.
+
+It never throws: the mail has already gone out by then, and a write failure must
+not turn a delivered message into a request-path error. It is logged at `error`,
+because the consequence — a retry will double-send — deserves to be visible.
+
+### The mock hid the bug, so it was fixed too
+
+`recordSent` swallows its own failures, so with a `db` mock that implemented
+`findUnique` but not `update`, **every test still passed while the write silently
+did nothing**. The mock now implements both methods and persists into the same
+row the guard reads, and `updateFails` drives the failure path deliberately
+rather than by accident.
+
+### Re-verified
+
+Two sends, **no caller-side write at all**, against real Postgres and real
+Mailpit:
+
+|                                     | Before | After                    |
+| ----------------------------------- | ------ | ------------------------ |
+| `inboxAfterFirst`                   | 1      | 1                        |
+| `resendId` persisted by the wrapper | `None` | `<cm_review@mh.neri.ph>` |
+| `deliveredAt` persisted             | no     | yes                      |
+| `inboxAfterSecond`                  | **2**  | **1**                    |
+| second call deduped                 | false  | **true**                 |
+
+Mutation: removing the two `recordSent` calls fails **3** tests — previously it
+would have failed 0.
+
+Gate re-run after the last edit: `typecheck` 0 errors / 0 warnings / 0 hints ·
+`lint` PASS · `test` **194** passed (10 files) · `build` PASS.
+
+### Answering the reviewer's question about #22
+
+**#22 should not write `resendId` or `deliveredAt`.** The wrapper owns them —
+owning it in one place is the whole point of the finding. #22 persists the
+`ContactMessage` (including `ipHash` and `status`) _before_ calling
+`sendContactEmail`, and updates `status` afterwards if it needs to; delivery
+fields are the wrapper's.

@@ -16,12 +16,35 @@ Object.assign(process.env, {
   SMTP_URL: "smtp://localhost:1025",
 });
 
-/** Prior-send lookup: set to a row to simulate an already-delivered message. */
+/**
+ * A one-row stand-in for `ContactMessage`. The mock implements BOTH methods the
+ * wrapper uses: `findUnique` is the idempotency read, `update` is the write. An
+ * earlier version had only `findUnique`, and because `recordSent` swallows its
+ * own failures the missing method was invisible — every test passed while the
+ * write silently did nothing. `updateFails` exists to drive that path
+ * deliberately instead of by accident.
+ */
 let existingRow: { resendId: string | null } | null = null;
+let updateFails = false;
+const updates: { id: string; resendId: string }[] = [];
+
 vi.mock("../db", () => ({
   db: {
     contactMessage: {
       findUnique: () => Promise.resolve(existingRow),
+      update: ({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: { resendId: string; deliveredAt: Date };
+      }) => {
+        if (updateFails) return Promise.reject(new Error("row not found"));
+        updates.push({ id: where.id, resendId: data.resendId });
+        // Persisted for real: a later findUnique in the same test sees it.
+        existingRow = { resendId: data.resendId };
+        return Promise.resolve({});
+      },
     },
   },
 }));
@@ -64,6 +87,8 @@ const base = {
 
 beforeEach(() => {
   existingRow = null;
+  updateFails = false;
+  updates.length = 0;
   sendMail.mockReset();
   sendMail.mockResolvedValue({ messageId: "<cm_123@mh.neri.ph>" });
   resendSend.mockReset();
@@ -205,14 +230,46 @@ describe("idempotency", () => {
     expect(sendMail).toHaveBeenCalledTimes(1);
   });
 
-  it("sends once across two calls when the first is recorded", async () => {
+  /**
+   * The regression this exists for: with only the READ in this module, a caller
+   * that never persisted `resendId` got two emails from two sends. The test that
+   * "proved" idempotency wrote `resendId` itself between the calls — so it was
+   * measuring the caller doing its part, not the module guaranteeing anything.
+   * There is deliberately NO caller-side write here.
+   */
+  it("sends once across two calls with no caller-side write at all", async () => {
     const first = await sendContactEmail(base);
     expect(first.ok && first.deduped).toBeFalsy();
-    // Simulate the caller persisting resendId, then retrying.
-    existingRow = { resendId: "<cm_123@mh.neri.ph>" };
+
     const second = await sendContactEmail(base);
     expect(second.ok && second.deduped).toBe(true);
     expect(sendMail).toHaveBeenCalledTimes(1);
+  });
+
+  it("records the provider id where the guard reads it", async () => {
+    await sendContactEmail(base);
+    expect(updates).toEqual([
+      { id: "cm_123", resendId: "<cm_123@mh.neri.ph>" },
+    ]);
+  });
+
+  /**
+   * The mail has already gone out by the time the write runs, so a write
+   * failure must not turn a delivered message into a request-path error. It is
+   * logged at `error` because the consequence — a retry will double-send —
+   * deserves to be visible.
+   */
+  it("still reports success when recording fails, and logs it", async () => {
+    updateFails = true;
+    const result = await sendContactEmail(base, "corr-9");
+    expect(result.ok).toBe(true);
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    const [message, context] = errorLog.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(message).toBe("contact email sent but not recorded");
+    expect(context.correlation_id).toBe("corr-9");
   });
 });
 
