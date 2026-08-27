@@ -99,3 +99,92 @@ describe("raw HTML is dropped before the allowlist can matter", () => {
     expect(html).not.toMatch(/<(script|iframe|div|span)/i);
   });
 });
+
+/**
+ * Issue #16's scope names "inline ProjectImage screenshots resolved into the
+ * rendered body", so Markdown images must survive. They were previously dropped
+ * silently: `figure`/`figcaption` were allowlisted for images while `img` itself
+ * was not, so the wrapper survived and its content vanished.
+ */
+describe("images", () => {
+  it("renders a same-origin image", async () => {
+    const html = await renderMarkdown("![Ledger detail](/api/media/a.webp)");
+    expect(html).toMatch(/<img[^>]*src="\/api\/media\/a\.webp"/);
+    expect(html).toMatch(/alt="Ledger detail"/);
+  });
+
+  it("keeps the title attribute", async () => {
+    const html = await renderMarkdown('![alt](/api/media/a.webp "A caption")');
+    expect(html).toMatch(/title="A caption"/);
+  });
+
+  /**
+   * SPEC §9 routes every image through /api/media, and astro.config.mjs sets
+   * `img-src 'self' data:` — so an external image would be blocked by CSP in the
+   * browser regardless. The sanitizer agrees with the CSP rather than emitting
+   * markup that fails silently.
+   *
+   * The protocol-relative case is the one `protocols.src: []` does NOT catch on
+   * its own: it carries no scheme, so the sanitizer passes it, and it still
+   * loads cross-origin. It is why `assertLocalImageSources` exists.
+   */
+  it.each([
+    ["absolute https", "![x](https://evil.example/a.png)"],
+    ["absolute http", "![x](http://evil.example/a.png)"],
+    ["protocol-relative", "![x](//evil.example/a.png)"],
+    ["javascript:", "![x](javascript:alert(1))"],
+    ["data: svg", "![x](data:image/svg+xml,<svg onload=alert(1)>)"],
+    ["relative, no leading slash", "![x](a.webp)"],
+  ])("drops an image with a %s source", async (_label, input) => {
+    const html = await renderMarkdown(input);
+    expect(html).not.toMatch(/<img/);
+    expect(html).not.toContain("evil.example");
+    expect(html).not.toContain("alert(1)");
+  });
+
+  it("never emits an img without a src", async () => {
+    for (const input of [
+      "![x](https://evil.example/a.png)",
+      "![x](//evil.example/a.png)",
+      "![x](javascript:alert(1))",
+    ]) {
+      const html = await renderMarkdown(input);
+      expect(html).not.toMatch(/<img(?![^>]*\ssrc=)/);
+    }
+  });
+
+  it("drops a bad image nested inside other elements", async () => {
+    const html = await renderMarkdown("> quoted ![x](//evil.example/a.png)");
+    expect(html).toMatch(/<blockquote>/);
+    expect(html).not.toMatch(/<img/);
+  });
+
+  it("keeps a good image nested inside other elements", async () => {
+    const html = await renderMarkdown("- item ![ok](/api/media/a.webp)");
+    expect(html).toMatch(/<li>[\s\S]*<img[^>]*src="\/api\/media\/a\.webp"/);
+  });
+});
+
+/**
+ * These pin the OUTCOME: half-supported syntax never reaches the page as
+ * markup. They do not pin the allowlist itself — removing `table`/`del` from
+ * `tagNames` fails 0 tests, and re-adding them fails 0 tests, because
+ * `remark-gfm` is absent so the pipeline cannot emit them either way. That is
+ * precisely why they were removed: an unreachable allowlist entry is
+ * undetectable by construction, so it has to be kept honest by reading.
+ *
+ * These tests DO fail if someone adds `remark-gfm` and restores the tags
+ * without deciding that tables are in scope.
+ */
+describe("allowlist matches what the pipeline can produce", () => {
+  it("does not silently half-support GFM tables", async () => {
+    const html = await renderMarkdown("| a | b |\n|---|---|\n| 1 | 2 |");
+    expect(html).not.toMatch(/<table/);
+    expect(html).toMatch(/\| a \| b \|/);
+  });
+
+  it("does not silently half-support strikethrough", async () => {
+    const html = await renderMarkdown("~~struck~~");
+    expect(html).not.toMatch(/<del/);
+  });
+});
