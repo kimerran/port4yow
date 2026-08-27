@@ -38,7 +38,12 @@ export const prerender = false;
  * another invalid token, and `verifyFormToken` already returns `malformed` for
  * `undefined`.
  */
-const ContactSchema = z.object({
+/**
+ * Exported for #37's boundary tests. The integration suite exercises the route
+ * end to end, but a route test cannot reach a value the schema rejects before
+ * the handler runs — min-1 and max+1 on each field are only observable here.
+ */
+export const ContactSchema = z.object({
   name: z.string().trim().min(2, "Tell me what to call you.").max(120),
   email: z.email("That email address looks incomplete.").max(255),
   message: z

@@ -21,6 +21,20 @@ export function normalizeSlug(input: string): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 96)
+      /**
+       * Again, because the cut can land on a separator.
+       *
+       * Found by #37's round-trip property test, not by an example: stripping
+       * before slicing leaves a **trailing hyphen** whenever character 97 fell
+       * inside a word. `isValidSlug` then rejects it, so a long title made
+       * `normalizeSlug` emit a slug its own validator refuses — the admin sees
+       * "invalid slug" on a value they never typed and the system generated.
+       *
+       * `"ab ".repeat(40)` reproduces it: 96 characters ending `b-ab-ab-`.
+       * Leading hyphens need no second pass — slicing from the front cannot
+       * create one.
+       */
+      .replace(/-+$/, "")
   );
 }
 
