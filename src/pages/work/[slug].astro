@@ -1,6 +1,7 @@
 ---
 import Card from "../../components/Card.astro";
 import JsonLd from "../../components/JsonLd.astro";
+import ResponsiveImage from "../../components/ResponsiveImage.astro";
 import SuitGlyph from "../../components/SuitGlyph.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { getPublishedProject } from "../../lib/project";
@@ -130,6 +131,25 @@ const jsonLd = {
         {project.body}
       </p>
     </section>
+
+    {
+      /* Inline screenshots (SPEC §5 block 4). Every derivative that EXISTS is
+        offered — see src/lib/images.ts for why they cannot be guessed from the
+        key. The first is eager: it is the first thing below the fold. */
+    }
+    {
+      project.images.length > 0 && (
+        <div class="flex flex-col gap-lg">
+          {project.images.map((image, i) => (
+            <ResponsiveImage
+              assets={image.assets}
+              caption={image.caption}
+              eager={i === 0}
+            />
+          ))}
+        </div>
+      )
+    }
 
     {/* 5 · Outcome */}
     <section class="flex flex-col gap-md">
