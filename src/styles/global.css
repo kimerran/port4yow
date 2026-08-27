@@ -51,11 +51,6 @@
   --font-body: var(--font-karla), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 
-  --text-display-xl: 96px; /* hero only */
-  --text-display-xl--line-height: 100px;
-  --text-display-xl--letter-spacing: -0.02em;
-  --text-display-xl--font-weight: 700;
-
   --text-headline-lg: 48px; /* project detail titles */
   --text-headline-lg--line-height: 56px;
   --text-headline-lg--font-weight: 600;
@@ -99,7 +94,12 @@
   --aspect-card: 5 / 7;
 }
 
-/* display-xl must never overflow the viewport (BRAND §3). */
+/* display-xl is deliberately NOT a @theme token.
+   A token emits an unconditional `.text-display-xl` into the same layer as this
+   @utility, and being later in source it wins — pinning the size to 96px at every
+   viewport and leaving the media queries below dead. Measured before the fix:
+   96px at 375px, where BRAND §3 requires 44px and says it "must never overflow
+   the viewport". The responsive steps live here and only here. */
 @utility text-display-xl {
   font-size: 44px;
   line-height: 1.04;

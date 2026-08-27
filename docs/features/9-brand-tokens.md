@@ -43,6 +43,34 @@ own origin.
 - **`optimizedFallbacks: false`.** Astro can synthesise metric-adjusted fallback faces; BRAND
   §3 names the exact fallback stacks, and the document wins over a generator.
 
+## Review follow-up — `text-display-xl` was 96px at every viewport
+
+`--text-display-xl` was declared **both** as a `@theme` token and as a `@utility`. Tailwind
+emitted four competing `.text-display-xl` rules in the same layer at identical specificity,
+and the token-derived one is unconditional and **last** — so it won everywhere and both media
+queries were dead code.
+
+Measured in headless Chrome against the built CSS, not inferred from the cascade:
+
+| Window | Before   | After    | BRAND §3 |
+| ------ | -------- | -------- | -------- |
+| 375px  | **96px** | **44px** | 44px     |
+| 700px  | **96px** | **56px** | 56px     |
+| 1200px | 96px     | 96px     | 96px     |
+
+Mutation-checked by re-adding the token and re-measuring: 96px returns at all three widths.
+
+96px display type at 375px is roughly four characters per line — the requirement this
+`@utility` existed to satisfy ("must never overflow the viewport") was the exact thing it
+failed. Fixed by dropping the four `--text-display-xl*` lines from `@theme`; the responsive
+steps now live in the `@utility` only. No other type token has a `@utility` counterpart, so
+`text-display-xl` was the only colliding name.
+
+**This is the same failure shape as the missing `font-display` utility earlier in this slice,
+one level deeper:** the config reads correctly, the utility exists, the build is green, and
+the rendered result is still wrong. The check has to be _what size renders at 375px_, not
+_does the class exist_. Carrying that into #10/#13/#14, which actually render the hero.
+
 ## Blocked
 
 Nothing, but one hand-off detail matters.
