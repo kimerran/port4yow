@@ -5,7 +5,7 @@ import { env } from "../../lib/env";
 import { verifyFormToken } from "../../lib/formToken";
 import { logger, newCorrelationId } from "../../lib/logger";
 import { sendContactEmail } from "../../lib/mail";
-import { consume, hashIp } from "../../lib/ratelimit";
+import { clientIpFrom, consume, hashIp } from "../../lib/ratelimit";
 
 export const prerender = false;
 
@@ -29,6 +29,14 @@ export const prerender = false;
  *
  * So the honeypot never produces a validation error; it is evaluated in step 4
  * where the spec's behaviour is defined. The error copy is verbatim from §7.
+ *
+ * `renderedAt` is optional for the same reason, one field over. Required, a
+ * missing token answered `400 {"renderedAt": "Invalid input: expected string,
+ * received undefined"}` — which names a hidden field a human cannot act on,
+ * confirms to a bot that the token is what it forgot, and leaks raw Zod
+ * internals where every other string here is verbatim §7 copy. Absent is just
+ * another invalid token, and `verifyFormToken` already returns `malformed` for
+ * `undefined`.
  */
 const ContactSchema = z.object({
   name: z.string().trim().min(2, "Tell me what to call you.").max(120),
@@ -39,7 +47,7 @@ const ContactSchema = z.object({
     .min(20, "A couple more sentences would help.")
     .max(5000),
   company: z.string().optional(),
-  renderedAt: z.string(),
+  renderedAt: z.string().optional(),
 });
 
 const GENERIC_500 = "Something went wrong on my end. Try again in a minute.";
@@ -119,9 +127,11 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
       return json(403, { ok: false, error: "Forbidden." });
     }
 
-    // 2 · Rate limit. The IP is hashed before it is used for anything at all,
-    // so no raw address exists past this line (SPEC §14.10).
-    const ipHash = hashIp(clientAddress);
+    // 2 · Rate limit. `clientIpFrom` unwraps X-Forwarded-For — behind a proxy
+    // the socket address is the PROXY, so keying on it gives the whole internet
+    // one shared bucket. The IP is hashed immediately, so no raw address exists
+    // past this line (SPEC §14.10).
+    const ipHash = hashIp(clientIpFrom(request, clientAddress));
     const limit = await consume("contact", ipHash);
 
     if (!limit.allowed) {

@@ -55,6 +55,38 @@ export function hashIp(ip: string): string {
   return createHash("sha256").update(`${ip}${env.IP_HASH_SALT}`).digest("hex");
 }
 
+/**
+ * The address to key a per-IP limit on.
+ *
+ * `clientAddress` is the SOCKET address. Behind a proxy that is the proxy, the
+ * same value for every visitor — so a per-IP limiter keyed on it has exactly one
+ * bucket and #14.9's "5/hr/IP" silently becomes "5/hr for everyone". Locally
+ * there is no proxy and it is correct; on Railway (SPEC §13) there is one, and
+ * `@astrojs/node` does not read `X-Forwarded-For` itself (checked: no such
+ * handling anywhere in the adapter). Every stored `ipHash` would also be
+ * identical, which makes SPEC §14.10's stated purpose for keeping one —
+ * anomaly review — impossible.
+ *
+ * The first entry in `X-Forwarded-For` is the original client; the rest are
+ * intermediate proxies appended left to right.
+ *
+ * ## The trust boundary, stated once
+ *
+ * This header is only trustworthy because Railway terminates in front of the
+ * app and the container is not directly reachable. If that ever stops being
+ * true, `X-Forwarded-For` is attacker-controlled and every per-IP limit becomes
+ * bypassable by rotating one header — the opposite failure to the one above, and
+ * a worse one. Anything else keying on a client IP (login #25, upload) must come
+ * through here rather than reading the header again, so this decision lives in
+ * one place.
+ */
+export function clientIpFrom(request: Request, socketAddress: string): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (!forwarded) return socketAddress;
+  const first = forwarded.split(",")[0]?.trim();
+  return first && first.length > 0 ? first : socketAddress;
+}
+
 /** `"contact:<ipHash>"` / `"login:<ipHash>"` / `"upload:<sessionId>"` (SPEC §7.2). */
 export function rateLimitKey(action: RateLimitAction, subject: string): string {
   return `${action}:${subject}`;

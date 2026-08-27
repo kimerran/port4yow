@@ -137,3 +137,71 @@ Also outstanding:
 ## Content TODOs
 
 None.
+
+---
+
+## Review round 2 — both findings addressed
+
+### Finding 1 · `X-Forwarded-For` ignored, so the per-IP limiter collapses (fixed)
+
+Correct, and the consequence is worse than a rate-limit bug. `clientAddress` is
+the **socket** address; behind Railway's proxy that is the proxy, identical for
+every visitor. So:
+
+- #14.9's "5/hr/IP" became **5/hr for everyone** — the first five submissions of
+  each hour lock out the entire internet;
+- every `ContactMessage.ipHash` was the **same value**, which makes SPEC §14.10's
+  stated reason for storing one — anomaly review — impossible.
+
+`clientIpFrom(request, socketAddress)` now takes the first entry of
+`X-Forwarded-For` (the original client; proxies append left to right) and falls
+back to the socket address when the header is absent, empty or only separators.
+
+**It lives in `ratelimit.ts` next to `hashIp`, deliberately.** Login (#25) and
+upload key on the same value, and the trust boundary needs stating once rather
+than three times: this header is only trustworthy because Railway terminates in
+front of the app and the container is not directly reachable. If that stops
+being true it is attacker-controlled and every per-IP limit becomes bypassable by
+rotating one header — the opposite failure, and a worse one. That caveat is
+written into the function's own comment, where the next caller will read it.
+
+### Finding 2 · A missing `renderedAt` named the hidden field back to the bot (fixed)
+
+```
+400 {"ok":false,"errors":{"renderedAt":"Invalid input: expected string, received undefined"}}
+```
+
+Three problems: it names a hidden field a human cannot act on, it confirms to a
+bot exactly what it forgot, and it is raw Zod wording where every other string
+here is verbatim §7 copy. It is the same principle already applied to `company`,
+one field over.
+
+`renderedAt` is now `optional()` and absence is just another invalid token —
+`verifyFormToken` already returns `malformed` for `undefined`, so it takes the
+spam path with everything else.
+
+## Re-verified
+
+| Behaviour                                        | Before               | After                                     |
+| ------------------------------------------------ | -------------------- | ----------------------------------------- |
+| 3 distinct `X-Forwarded-For` → distinct `ipHash` | **1**                | **3**                                     |
+| per-IP rate-limit buckets                        | 1 bucket, count 3    | 3 buckets, count 1 each                   |
+| global flood brake still counts all              | 3                    | **3**                                     |
+| missing `renderedAt`                             | 400 naming the field | **200** `{ok:true}`, row `SPAM`, no email |
+
+Mutation:
+
+| Mutation                                     | Integration | Unit  |
+| -------------------------------------------- | ----------- | ----- |
+| key on the socket address (the reviewed bug) | **2**       | 0     |
+| take the nearest proxy instead of the client | 0           | **2** |
+| make `renderedAt` required again             | **1**       | 0     |
+
+The middle row is why the unit tests exist alongside the integration ones: taking
+the last `X-Forwarded-For` entry rather than the first still produces three
+distinct buckets in a single-proxy test, so only a unit test with a realistic
+multi-hop header catches it.
+
+Gate re-run after the last edit: `typecheck` 0 errors / 0 warnings / 0 hints ·
+`lint` PASS · `test` **242** passed, 21 skipped · `build` PASS. Integration:
+**21/21**.

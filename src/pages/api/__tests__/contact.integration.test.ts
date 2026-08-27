@@ -53,11 +53,13 @@ describe.skipIf(!enabled)("POST /api/contact", () => {
       ip?: string;
       origin?: string | null;
       contentType?: "form" | "json";
+      forwardedFor?: string;
     } = {},
   ): Promise<Response> => {
     const { ip = "203.0.113.10", origin = SITE, contentType = "form" } = opts;
     const headers: Record<string, string> = { "User-Agent": "vitest" };
     if (origin) headers["Origin"] = origin;
+    if (opts.forwardedFor) headers["X-Forwarded-For"] = opts.forwardedFor;
 
     let body: BodyInit;
     if (contentType === "json") {
@@ -244,6 +246,81 @@ describe.skipIf(!enabled)("POST /api/contact", () => {
     expect((await post(validFields(), { ip: "203.0.113.61" })).status).toBe(
       200,
     );
+  });
+
+  /**
+   * On Railway the socket address is the proxy, so without X-Forwarded-For every
+   * visitor shares one bucket — #14.9's 5/hr/IP becomes 5/hr for everyone — and
+   * every stored ipHash is identical, defeating SPEC §14.10's reason for keeping
+   * one at all. Keyed on the socket address this test saw 1 distinct hash.
+   */
+  it("keys the limiter on the forwarded client, not the proxy socket", async () => {
+    for (const ip of ["203.0.113.10", "198.51.100.20", "192.0.2.30"]) {
+      const response = await post(validFields(), {
+        ip: "10.0.0.1",
+        forwardedFor: ip,
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const rows = await db.contactMessage.findMany({ select: { ipHash: true } });
+    expect(new Set(rows.map((r) => r.ipHash)).size).toBe(3);
+
+    const buckets = await db.rateLimit.findMany({
+      where: { key: { startsWith: "contact:" } },
+      select: { key: true, count: true },
+    });
+    const perIp = buckets.filter((b) => b.key !== "contact:global");
+    expect(perIp).toHaveLength(3);
+    expect(perIp.every((b) => b.count === 1)).toBe(true);
+    // The global flood brake still counts all three.
+    expect(buckets.find((b) => b.key === "contact:global")?.count).toBe(3);
+  });
+
+  it("rate limits each forwarded client separately", async () => {
+    for (let i = 0; i < 5; i++) {
+      await post(validFields(), {
+        ip: "10.0.0.1",
+        forwardedFor: "203.0.113.70",
+      });
+    }
+    expect(
+      (
+        await post(validFields(), {
+          ip: "10.0.0.1",
+          forwardedFor: "203.0.113.70",
+        })
+      ).status,
+    ).toBe(429);
+    expect(
+      (
+        await post(validFields(), {
+          ip: "10.0.0.1",
+          forwardedFor: "203.0.113.71",
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  /**
+   * A required renderedAt answered `400 {"renderedAt": "Invalid input: expected
+   * string, received undefined"}` — naming a hidden field a human cannot act on,
+   * confirming to a bot exactly what it forgot, in raw Zod wording. Absent is
+   * just another invalid token.
+   */
+  it("a missing renderedAt is spam, not a 400 naming the hidden field", async () => {
+    const fields: Record<string, string> = validFields();
+    delete fields.renderedAt;
+    const response = await post(fields);
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as ContactBody;
+    expect(body).toEqual({ ok: true });
+    expect(JSON.stringify(body)).not.toContain("renderedAt");
+
+    const rows = await db.contactMessage.findMany();
+    expect(rows[0]?.status).toBe("SPAM");
+    expect(await inboxCount()).toBe(0);
   });
 
   it("sets no-store on every response", async () => {
