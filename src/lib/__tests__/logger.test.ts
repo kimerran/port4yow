@@ -201,3 +201,52 @@ describe("audit", () => {
     expect(out).not.toContain("203.0.113.7");
   });
 });
+
+/**
+ * #36's audit finding. Key-based redaction cannot see what it cannot name, and
+ * the SMTP path logs `reason: cause.message` — a mail-server rejection quotes
+ * the address it rejected, and that address is the visitor's reply-to.
+ */
+describe("email addresses inside free-text values (#36)", () => {
+  const REJECTION =
+    "550 5.1.1 <visitor@example.com>: recipient address rejected";
+
+  it("masks an address that arrives under a non-email key", () => {
+    const out = redact({ reason: REJECTION }) as { reason: string };
+    expect(out.reason).not.toContain("visitor@example.com");
+    expect(out.reason).not.toContain("visitor");
+    // The domain survives — it is what makes the rejection debuggable.
+    expect(out.reason).toContain("[redacted]@example.com");
+    // Everything that is not the address is left alone.
+    expect(out.reason).toContain("550 5.1.1");
+    expect(out.reason).toContain("recipient address rejected");
+  });
+
+  it("masks every address in a value, not just the first", () => {
+    const out = redact({
+      reason: "from a@one.test to b@two.test",
+    }) as { reason: string };
+    expect(out.reason).toBe("from [redacted]@one.test to [redacted]@two.test");
+  });
+
+  it("masks an address carried in an Error message", () => {
+    const out = redact({ cause: new Error(REJECTION) }) as {
+      cause: { message: string };
+    };
+    expect(out.cause.message).not.toContain("visitor@example.com");
+    expect(out.cause.message).toContain("[redacted]@example.com");
+  });
+
+  it("reaches the stream masked, not just the return value", () => {
+    const line = capture(() => {
+      logger.error("contact email failed", { reason: REJECTION });
+    });
+    expect(line).not.toContain("visitor@example.com");
+    expect(line).toContain("example.com");
+  });
+
+  it("leaves text with no address untouched", () => {
+    const text = "Can't reach database server at 127.0.0.1:55466";
+    expect((redact({ reason: text }) as { reason: string }).reason).toBe(text);
+  });
+});

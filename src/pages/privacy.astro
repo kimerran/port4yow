@@ -1,0 +1,95 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { RETENTION_MONTHS } from "../jobs/index.ts";
+
+/**
+ * SPEC §14.10 — "state this in a short privacy note linked in the footer".
+ *
+ * ## Why the retention figure is imported rather than typed
+ *
+ * The number below is the same constant `contact:prune` deletes by. A privacy
+ * note is a promise about what the database holds, and the cheapest way for it
+ * to become a lie is for someone to change the job's window and not this page.
+ * Importing the constant makes the two impossible to disagree.
+ *
+ * This is a server-rendered page and `src/jobs/index.ts` is a server module, so
+ * the import never reaches a client bundle (AGENT §4) — it has no client script
+ * at all.
+ *
+ * ## Voice
+ *
+ * BRAND §8: plain, specific, slightly dry. No "we value your privacy", no
+ * cookie-banner boilerplate for cookies the site does not set. It says what is
+ * collected, what is done to it, how long it stays, and how to have it removed.
+ * Anything longer would be padding, and padding is what makes these unread.
+ */
+/**
+ * Kept on one line with its unit in the markup below, deliberately.
+ *
+ * Astro drops the newline *after* an expression in a text node, so
+ * `({years}\n years)` served as `(2years)` — a missing space in the one
+ * sentence on this page that is a promise. Nothing in the verification could
+ * see it: the page still answered 200 and axe still found nothing, because a
+ * missing space is neither a status code nor an accessibility violation.
+ *
+ * `RETENTION_MONTHS / 12` also assumes the window is a whole number of years.
+ * At 24 it is; an 18-month window would render "1.5 years" and a 12-month one
+ * "1 years". Not worth generalising for a constant that is unlikely to move,
+ * but worth knowing before moving it.
+ */
+const years = RETENTION_MONTHS / 12;
+---
+
+<BaseLayout
+  title="Privacy — mh.neri.ph"
+  description="What the contact form collects, how long it is kept, and how to have it deleted."
+>
+  <article class="flex max-w-[68ch] flex-col gap-lg py-2xl">
+    <h1 class="font-display text-headline-lg">Privacy</h1>
+
+    <p>
+      This site has no analytics, no advertising, and no third-party embeds. It
+      sets one cookie, and only after you sign in to the admin area — there is
+      no cookie banner because there is nothing to consent to.
+    </p>
+
+    <h2 class="text-headline-sm font-display">
+      What the contact form collects
+    </h2>
+    <p>
+      Your name, your email address, and your message. Nothing else is asked
+      for, and nothing is inferred.
+    </p>
+    <p>
+      Two things are recorded alongside it. Your browser's user-agent string, so
+      a broken submission can be reproduced. And a salted SHA-256 hash of your
+      IP address — <strong>never the address itself</strong> — which is what the rate
+      limit counts against. The hash cannot be reversed to an address, and it is not
+      stored anywhere in readable form.
+    </p>
+
+    <h2 class="text-headline-sm font-display">How long it is kept</h2>
+    <p>
+      Contact messages are deleted after {RETENTION_MONTHS} months ({years} years).
+      That is not a policy someone remembers to apply: a scheduled job runs monthly
+      and deletes everything past the cutoff.
+    </p>
+
+    <h2 class="text-headline-sm font-display">Where it goes</h2>
+    <p>
+      Your message is stored in this site's database and emailed to one inbox —
+      mine. It is not shared, sold, or passed to anyone else. Server logs record
+      that a submission happened; they do not record the message, your email
+      address, or your IP.
+    </p>
+
+    <h2 class="text-headline-sm font-display">Having it deleted</h2>
+    <p>
+      Ask, and it goes. Send the request through the <a
+        class="underline underline-offset-4 hover:text-deep-teal focus-visible:text-deep-teal"
+        href="/#contact">contact form</a
+      > — say you want your earlier message removed and roughly when you sent it.
+      No account, no form to fill in, no waiting period.
+    </p>
+  </article>
+</BaseLayout>

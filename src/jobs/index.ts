@@ -17,6 +17,39 @@ import { logger } from "../lib/logger.ts";
  * state like that is what makes a re-run behave differently from a first run.
  */
 
+/** SPEC §14.10 — contact messages are retained 24 months, then pruned. */
+export const RETENTION_MONTHS = 24;
+
+/**
+ * `now` shifted back by whole calendar months, clamped to the target month's
+ * last day.
+ *
+ * Date arithmetic in days would be wrong here: 24 months is 730 or 731 days
+ * depending on which leap year it spans, and the privacy note says months. The
+ * clamp matters for exactly one shape — a row created on 29 February. Without
+ * it, `setUTCMonth` rolls 2024-02-29 back to a non-existent 2022-02-29 and lands
+ * on 2022-03-01, moving the cutoff a day later and deleting a day of messages
+ * early. Deleting someone's message before you promised to is the failure worth
+ * spending five lines on.
+ */
+export function monthsBefore(now: Date, months: number): Date {
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth() - months;
+  // Day 0 of the following month is the last day of the target month.
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(
+    Date.UTC(
+      year,
+      month,
+      Math.min(now.getUTCDate(), lastDay),
+      now.getUTCHours(),
+      now.getUTCMinutes(),
+      now.getUTCSeconds(),
+      now.getUTCMilliseconds(),
+    ),
+  );
+}
+
 export interface JobResult {
   job: string;
   deleted?: number;
@@ -117,9 +150,46 @@ export async function reportMediaOrphans(): Promise<OrphanReport> {
   return { job: "media:orphans", found: keys.length, keys };
 }
 
+/**
+ * SPEC §14.10 / #36 — delete `ContactMessage` rows older than 24 months.
+ *
+ * ## Why this one is a correctness mechanism, and the other prunes are not
+ *
+ * `session:prune` and `ratelimit:prune` are housekeeping: #23 and #19 already
+ * make a stale row harmless, so those jobs only stop tables growing. This job is
+ * different in kind. The retention promise in the privacy note is a statement
+ * about what the database holds, and nothing else in the system enforces it — if
+ * this job stops running, the promise quietly becomes false while every page
+ * still says otherwise. It is the only implementation of that sentence.
+ *
+ * ## The count, and only the count
+ *
+ * #36 requires the job to log a count rather than the rows, and the reason is
+ * not brevity: a `ContactMessage` is a name, an email address and free text a
+ * stranger typed. Logging the rows being deleted for privacy reasons would
+ * copy them somewhere with no retention policy at all — the log shipper. The
+ * count is what an operator needs to see that a schedule fired.
+ */
+export async function pruneContactMessages(
+  now: Date = new Date(),
+): Promise<JobResult> {
+  const cutoff = monthsBefore(now, RETENTION_MONTHS);
+  const { count } = await db.contactMessage.deleteMany({
+    where: { createdAt: { lt: cutoff } },
+  });
+  logger.info("job: contact:prune", {
+    deleted: count,
+    // A month boundary, not a row: safe to log, and the only way to tell a run
+    // that found nothing from a run that computed the wrong window.
+    cutoff: cutoff.toISOString(),
+  });
+  return { job: "contact:prune", deleted: count };
+}
+
 export const JOBS = {
   "session:prune": pruneSessions,
   "ratelimit:prune": pruneRateLimits,
+  "contact:prune": pruneContactMessages,
   "media:orphans": reportMediaOrphans,
 } as const;
 
