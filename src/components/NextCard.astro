@@ -1,0 +1,74 @@
+---
+import type { NextProject } from "../lib/project";
+import SuitGlyph from "./SuitGlyph.astro";
+
+/**
+ * The "next card" footer (SPEC §5, #18).
+ *
+ * A face-down card back that flips to reveal the next project's title on hover
+ * OR focus. The "or focus" is the requirement, not a nicety: BRAND §9 forbids
+ * hover-only affordances, so `group-focus-visible` drives exactly the same flip
+ * as `group-hover` — the `<a>` is the group and is itself the focus target.
+ *
+ * The reveal is presentational only. The card back is `aria-hidden`, so the
+ * link's accessible name comes entirely from the front face — the title and suit
+ * are announced whether or not the card has visually flipped. Nobody depends on
+ * the animation having run.
+ *
+ * BRAND §9: `motion-reduce` drops the transition, so the flip is instant rather
+ * than absent — the title still appears on hover and focus.
+ */
+interface Props {
+  next: NextProject;
+}
+
+const { next } = Astro.props;
+
+const face =
+  "card-shadow absolute inset-0 backface-hidden rounded-lg border border-deep-teal/15";
+---
+
+<nav aria-label="Next project" class="flex flex-col gap-md">
+  <h2 class="font-mono text-label-sm tracking-wide text-ink-muted uppercase">
+    Next card
+  </h2>
+
+  <a
+    href={`/work/${next.slug}`}
+    class="group relative block aspect-card w-full max-w-[280px] rounded-lg perspective-distant"
+  >
+    <span
+      class="relative block h-full w-full transition-transform duration-500 ease-out transform-3d group-hover:rotate-y-180 group-focus-visible:rotate-y-180 motion-reduce:transition-none"
+    >
+      {/* Face down. Decorative: the accessible name comes from the front. */}
+      <span
+        aria-hidden="true"
+        class:list={[face, "flex items-center justify-center bg-deep-teal"]}
+      >
+        <span
+          class="absolute inset-sm rounded border border-cool-stock/20"
+          aria-hidden="true"></span>
+        <SuitGlyph suit={next.suit} class="relative h-8 w-8 text-cool-stock" />
+      </span>
+
+      {
+        /* Face up. Holds the text, so it is always in the accessibility tree. */
+      }
+      <span
+        class:list={[
+          face,
+          "flex rotate-y-180 flex-col justify-between gap-sm bg-card-face p-md",
+        ]}
+      >
+        <span class="font-mono text-label-sm text-ink-muted">Next card</span>
+        <span class="flex flex-col gap-xs">
+          <span class="font-display text-headline-md">{next.title}</span>
+          <span class="flex items-center gap-xs text-label-sm text-ink-muted">
+            <SuitGlyph suit={next.suit} class="h-3 w-3" />
+            <span class="capitalize">{next.suit}</span>
+          </span>
+        </span>
+      </span>
+    </span>
+  </a>
+</nav>

@@ -3,7 +3,8 @@ import Card from "../../components/Card.astro";
 import JsonLd from "../../components/JsonLd.astro";
 import SuitGlyph from "../../components/SuitGlyph.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { getPublishedProject } from "../../lib/project";
+import NextCard from "../../components/NextCard.astro";
+import { getNextProject, getPublishedProject } from "../../lib/project";
 import { SUIT_CATEGORY } from "../../lib/suits";
 
 const { slug } = Astro.params;
@@ -11,15 +12,25 @@ const project = slug ? await getPublishedProject(slug) : null;
 
 /* SPEC §5 — unknown OR non-PUBLISHED slug returns 404. Never a 500, and never a
    redirect that would leak whether the row exists. The status filter lives in the
-   WHERE clause, so a DRAFT row is indistinguishable from one that never was. */
+   WHERE clause, so a DRAFT row is indistinguishable from one that never was.
+
+   `Astro.rewrite` rather than `new Response(null, { status: 404 })`: that returned
+   the right STATUS with an empty BODY, so a DRAFT slug rendered a blank page while
+   an unknown slug — which never matches this route — got the real 404. Two
+   different 404s, and the blank one is the case that leaks least helpfully to a
+   human. The rewrite renders 404.astro itself, which sets the 404 status. */
 if (!project) {
-  return new Response(null, { status: 404 });
+  return Astro.rewrite("/404");
 }
 
 Astro.response.headers.set(
   "Cache-Control",
   "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
 );
+
+/* #18 — the next card, wrapping to the first. Null when this is the only
+   published project, in which case the footer is omitted entirely. */
+const next = await getNextProject(project);
 
 const index = String(project.sequence).padStart(2, "0");
 const canonical = new URL(`/work/${project.slug}`, Astro.site ?? Astro.url)
@@ -170,6 +181,9 @@ const jsonLd = {
       )
     }
 
-    {/* 7 · Next card — #18. */}
+    {
+      /* 7 · Next card (#18). Omitted when this is the only published project. */
+    }
+    {next && <NextCard next={next} />}
   </article>
 </BaseLayout>

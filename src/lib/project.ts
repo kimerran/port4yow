@@ -62,6 +62,58 @@ export async function getPublishedProject(
   };
 }
 
+/** The card the "next card" footer flips to (SPEC §5, #18). */
+export interface NextProject {
+  slug: string;
+  title: string;
+  suit: Suit;
+  sequence: number;
+}
+
+/**
+ * The next published project by `sequence`, wrapping to the first.
+ *
+ * Two queries rather than one, and deliberately so: the wrap case is the only
+ * one that needs the second, and expressing "next or else first" as a single
+ * query means an OR across two orderings that reads worse than this.
+ *
+ * `sequence > current` rather than `>=` means a tie skips its sibling instead of
+ * pointing the card at a project sharing the current sequence — which would
+ * otherwise be reachable only by chance of insertion order.
+ *
+ * Returns null when this is the only published project, so the caller omits the
+ * footer rather than rendering a card that links to the page you are on. Note
+ * the filter is `status: "PUBLISHED"` on both queries: a DRAFT must never be
+ * reachable by walking the deck, which would leak its existence (SPEC §5).
+ */
+export async function getNextProject(current: {
+  slug: string;
+  sequence: number;
+}): Promise<NextProject | null> {
+  const select = {
+    slug: true,
+    title: true,
+    suit: true,
+    sequence: true,
+  } as const;
+
+  const next =
+    (await db.project.findFirst({
+      where: { status: "PUBLISHED", sequence: { gt: current.sequence } },
+      orderBy: { sequence: "asc" },
+      select,
+    })) ??
+    (await db.project.findFirst({
+      where: { status: "PUBLISHED" },
+      orderBy: { sequence: "asc" },
+      select,
+    }));
+
+  if (!next || next.slug === current.slug) return null;
+
+  return { ...next, suit: suitFromEnum(next.suit) };
+}
+
 /** Every published slug, for getStaticPaths-style needs and the sitemap (#34). */
 export async function getPublishedSlugs(): Promise<string[]> {
   const rows = await db.project.findMany({
