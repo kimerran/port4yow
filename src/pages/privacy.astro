@@ -7,10 +7,13 @@ import BaseLayout from "../layouts/BaseLayout.astro";
  *
  * It used to import `RETENTION_MONTHS` from the pruning job, so the stated
  * window could not drift from the window actually enforced. There is no
- * database and no pruning job now: a message is emailed and not stored, which
- * makes the retention section a statement about an inbox rather than about a
- * table. Nothing here may describe the old architecture — a privacy note that
- * over-states what is collected is as wrong as one that under-states it.
+ * database and no pruning job now: everything is emailed and not stored, which
+ * makes the retention section a statement about an inbox rather than a table.
+ *
+ * The entry gate added a second thing to declare, and this page is the only
+ * place a visitor can find out what it takes. The list of browser facts here
+ * must match `VisitorSchema` in `src/lib/visitor.ts` exactly — under-stating it
+ * is the failure that matters, and over-stating it is not much better.
  *
  * ## Voice
  *
@@ -29,9 +32,42 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     <h1 class="font-display text-headline-lg">Privacy</h1>
 
     <p>
-      This site has no analytics, no advertising, and no third-party embeds. It
-      sets one cookie, and only after you sign in to the admin area — there is
-      no cookie banner because there is nothing to consent to.
+      No advertising, no third-party embeds, and no cookies. What this site does
+      collect, it collects because a form asked you for it — set out below in
+      full.
+    </p>
+
+    <h2 class="text-headline-sm font-display">
+      What the entry form collects, and why
+    </h2>
+    <p>
+      You are asked for an email address before the portfolio opens, and
+      optionally a name. That is used for one thing: to tell me someone read it.
+      There is no mailing list, and nothing is sent to you.
+    </p>
+    <p>
+      Alongside it, the page reports what your browser volunteers about the
+      visit: <strong
+        >which page you landed on, the referring URL, your user-agent string,
+        browser language, time zone, screen size and window size</strong
+      >, plus the time. That is the whole list. There is no analytics script, no
+      tracking pixel, no fingerprinting, and nothing that follows you to another
+      site.
+    </p>
+    <p>
+      Your answer is remembered in your browser's local storage so you are not
+      asked again. It stays on your device, is not a cookie, is not sent
+      anywhere, and clearing your site data removes it.
+    </p>
+    <p>
+      <strong>Downloading the resume reports the same set</strong>, so I know
+      who took a copy. If you got past the entry form, that download is linked
+      to the email you gave.
+    </p>
+    <p>
+      Being plain about the obvious: the entry form is a courtesy, not a lock.
+      The pages behind it are ordinary public HTML, and anyone determined to
+      read them without answering can.
     </p>
 
     <h2 class="text-headline-sm font-display">
@@ -51,11 +87,12 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
     <h2 class="text-headline-sm font-display">Where it goes</h2>
     <p>
-      Your message is emailed to one inbox — mine. This site has no database, so
-      no copy is kept here: once the email is sent, nothing about your
-      submission remains on the server. It is not shared, sold, or passed to
-      anyone else. Server logs record that a submission happened; they do not
-      record the message, your name, your email address, or your IP.
+      All of it — messages, entry-form details, download notices — is emailed to
+      one inbox, mine. This site has no database, so no copy is kept here: once
+      the email is sent, nothing about you remains on the server. It is not
+      shared, sold, or passed to anyone else. Server logs record that a
+      submission happened; they do not record the message, your name, your email
+      address, or your IP.
     </p>
 
     <h2 class="text-headline-sm font-display">How long it is kept</h2>

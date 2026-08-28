@@ -194,3 +194,121 @@ export async function sendContactEmail(
     };
   }
 }
+
+/**
+ * A visit, or a resume download, reported to the owner.
+ *
+ * These exist because the site has no database: the email IS the record. That is
+ * the same decision the contact route already makes, and it has the same
+ * consequence — a provider outage loses the entry, and there is no second copy
+ * to reconcile against.
+ */
+export interface VisitAlert {
+  /** Correlation id, doubling as the idempotency key. */
+  messageId: string;
+  kind: "visit" | "resume";
+  email: string;
+  name?: string | undefined;
+  /** Everything the browser volunteered. Rendered verbatim, escaped. */
+  facts: Record<string, string>;
+}
+
+/**
+ * Renders the alert.
+ *
+ * `escapeHtml` on every value without exception: `facts` is populated from the
+ * browser, so the referrer and the user-agent are attacker-controlled strings
+ * arriving in the owner's mail client.
+ */
+export function renderVisitAlert(input: VisitAlert): RenderedEmail {
+  const heading =
+    input.kind === "resume" ? "Resume downloaded" : "Portfolio viewed";
+  const who = input.name ? `${input.name} <${input.email}>` : input.email;
+
+  const rows = Object.entries(input.facts);
+
+  const text = [
+    `${heading}`,
+    "",
+    `From: ${who}`,
+    "",
+    ...rows.map(([key, value]) => `${key}: ${value}`),
+  ].join("\n");
+
+  const html = [
+    `<h2>${escapeHtml(heading)}</h2>`,
+    `<p><strong>From:</strong> ${escapeHtml(who)}</p>`,
+    '<table cellpadding="4" style="border-collapse:collapse">',
+    ...rows.map(
+      ([key, value]) =>
+        `<tr><td style="color:#3C4F50">${escapeHtml(key)}</td><td>${escapeHtml(value)}</td></tr>`,
+    ),
+    "</table>",
+  ].join("\n");
+
+  return { subject: `[mh.neri.ph] ${heading} — ${who}`, text, html };
+}
+
+/**
+ * Sends a visit or download alert. NEVER THROWS, for the same reason
+ * `sendContactEmail` does not: the visitor's page must not fail because the mail
+ * provider is having a bad minute.
+ */
+export async function sendVisitAlert(
+  input: VisitAlert,
+  correlationId?: string,
+): Promise<SendResult> {
+  const rendered = renderVisitAlert(input);
+  const from = `Portfolio <${env.CONTACT_FROM_EMAIL}>`;
+
+  try {
+    if (env.RESEND_ENABLED) {
+      const { data, error } = await getResend().emails.send(
+        {
+          from,
+          to: env.CONTACT_TO_EMAIL,
+          replyTo: headerSafe(input.email),
+          subject: rendered.subject,
+          text: rendered.text,
+          html: rendered.html,
+        },
+        { idempotencyKey: input.messageId },
+      );
+
+      if (error || !data) {
+        logger.error("visit alert failed", {
+          correlation_id: correlationId,
+          kind: input.kind,
+          backend: "resend",
+          reason: error?.message ?? "resend returned no data",
+        });
+        return { ok: false, error: error?.message ?? "no data" };
+      }
+
+      return { ok: true, providerId: data.id, backend: "resend" };
+    }
+
+    const info = await createTransport(env.SMTP_URL).sendMail({
+      from,
+      to: env.CONTACT_TO_EMAIL,
+      replyTo: headerSafe(input.email),
+      subject: rendered.subject,
+      text: rendered.text,
+      html: rendered.html,
+      messageId: `<${input.messageId}@mh.neri.ph>`,
+    });
+
+    return { ok: true, providerId: info.messageId, backend: "smtp" };
+  } catch (cause) {
+    logger.error("visit alert failed", {
+      correlation_id: correlationId,
+      kind: input.kind,
+      backend: env.RESEND_ENABLED ? "resend" : "smtp",
+      reason: cause instanceof Error ? cause.message : "unknown",
+    });
+    return {
+      ok: false,
+      error: cause instanceof Error ? cause.message : "unknown",
+    };
+  }
+}

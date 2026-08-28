@@ -1,0 +1,132 @@
+---
+/**
+ * The viewing gate.
+ *
+ * ## What it is, stated where someone will read it
+ *
+ * A client-side overlay over a page whose HTML is already complete. It is a
+ * **courtesy gate, not an access control** — view-source, curl, reader mode, or
+ * JavaScript being off all get past it. Nothing behind it may be anything that
+ * must not be public.
+ *
+ * Making it real would mean server-rendering every page behind a session, which
+ * is the architecture this site was deliberately moved off, and it would take
+ * the whole site out of search results rather than just penalising it.
+ *
+ * ## Markup shape
+ *
+ * Rendered `hidden` and revealed by the script, never the reverse. A gate that
+ * ships visible and is removed by JavaScript flashes over the page on every
+ * load and blocks the site outright if the script fails — which is the one
+ * failure mode a gate must not have.
+ */
+---
+
+<div
+  data-access-gate
+  hidden
+  class="fixed inset-0 z-50 flex items-center justify-center bg-ink-navy/70 px-md backdrop-blur-sm"
+>
+  {
+    /* `role="dialog"` + `aria-modal` so assistive tech treats the page behind it
+      as inert, matching what the focus trap does for the keyboard. */
+  }
+  <div
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="gate-title"
+    aria-describedby="gate-note"
+    class="w-full max-w-[460px] rounded-lg border border-outline-variant bg-surface-raised p-lg shadow-lg"
+  >
+    <h2 id="gate-title" class="font-display text-headline-md">
+      Before you look around
+    </h2>
+
+    <p id="gate-note" class="mt-sm text-body-md text-ink-muted">
+      Leave an email and the portfolio opens. I'm told who's reading it — that's
+      the whole trade.
+    </p>
+
+    <form data-access-form class="mt-lg flex flex-col gap-md" novalidate>
+      <div class="flex flex-col gap-xs">
+        <label
+          class="font-mono text-label-sm text-ink-navy uppercase"
+          for="gate-name"
+          >Name <span class="text-ink-muted">(optional)</span></label
+        >
+        <input
+          id="gate-name"
+          name="name"
+          type="text"
+          autocomplete="name"
+          maxlength="120"
+          class="min-h-11 w-full rounded border border-outline-variant bg-surface-raised px-md py-sm text-body-md text-ink-navy"
+        />
+      </div>
+
+      <div class="flex flex-col gap-xs">
+        <label
+          class="font-mono text-label-sm text-ink-navy uppercase"
+          for="gate-email">Email</label
+        >
+        <input
+          id="gate-email"
+          name="email"
+          type="email"
+          required
+          autocomplete="email"
+          maxlength="255"
+          aria-describedby="gate-email-error"
+          class="min-h-11 w-full rounded border border-outline-variant bg-surface-raised px-md py-sm text-body-md text-ink-navy"
+        />
+        {
+          /* In the DOM from first render, not added on failure: a live region
+            created at the moment it gains text is frequently not announced. */
+        }
+        <p
+          id="gate-email-error"
+          data-access-error
+          role="alert"
+          aria-live="polite"
+          class="min-h-[1rem] text-label-sm text-ink-muted"
+        >
+        </p>
+      </div>
+
+      {
+        /* The honeypot. `tabindex="-1"` and `aria-hidden` so it is unreachable
+          by keyboard or screen reader; only an automated filler finds it. */
+      }
+      <div class="sr-only" aria-hidden="true">
+        <label for="gate-company">Company</label>
+        <input
+          id="gate-company"
+          name="company"
+          type="text"
+          tabindex="-1"
+          autocomplete="off"
+        />
+      </div>
+
+      <button
+        type="submit"
+        data-access-submit
+        class="inline-flex min-h-11 items-center justify-center rounded-lg bg-deep-teal px-lg py-sm font-mono text-label-sm text-cool-stock uppercase transition-colors hover:bg-ink-navy focus-visible:bg-ink-navy motion-reduce:transition-none"
+      >
+        View the portfolio
+      </button>
+
+      <p class="text-label-sm text-ink-muted">
+        Used to let me know someone visited, and nothing else. Details in the <a
+          class="underline underline-offset-4 hover:text-deep-teal"
+          href="/privacy">privacy note</a
+        >.
+      </p>
+    </form>
+  </div>
+</div>
+
+<script>
+  import { initAccessGate } from "../scripts/access-gate.ts";
+  initAccessGate();
+</script>

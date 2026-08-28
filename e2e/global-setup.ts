@@ -24,6 +24,23 @@ export interface E2EFixture {
 
 export const FIXTURE_PATH = join(process.cwd(), ".playwright", "fixture.json");
 
+/**
+ * A Playwright storage state that has already passed the viewing gate.
+ *
+ * `playwright.config.ts` loads this for every project, so the specs exercise the
+ * site rather than the overlay in front of it. The gate has its own spec, which
+ * clears this and tests it directly — the bypass exists so that ONE spec covers
+ * the gate instead of every spec having to dismiss it.
+ *
+ * The key and shape must match `access-gate.ts`. They are duplicated rather than
+ * imported because that module is browser-only.
+ */
+export const STORAGE_STATE_PATH = join(
+  process.cwd(),
+  ".playwright",
+  "state.json",
+);
+
 const CONTENT_DIR = join(process.cwd(), "src", "content", "projects");
 
 export default function globalSetup(): void {
@@ -47,4 +64,26 @@ export default function globalSetup(): void {
   const fixture: E2EFixture = { slugs, salt: randomBytes(8).toString("hex") };
   mkdirSync(join(process.cwd(), ".playwright"), { recursive: true });
   writeFileSync(FIXTURE_PATH, JSON.stringify(fixture), "utf8");
+
+  writeFileSync(
+    STORAGE_STATE_PATH,
+    JSON.stringify({
+      cookies: [],
+      origins: [
+        {
+          origin: "http://localhost:4321",
+          localStorage: [
+            {
+              name: "mhn.access.v1",
+              value: JSON.stringify({
+                email: "e2e@example.test",
+                name: "E2E",
+              }),
+            },
+          ],
+        },
+      ],
+    }),
+    "utf8",
+  );
 }

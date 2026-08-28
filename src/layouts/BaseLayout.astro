@@ -1,6 +1,7 @@
 ---
 import { Font } from "astro:assets";
 import FacetLattice from "../components/FacetLattice.astro";
+import AccessGate from "../components/AccessGate.astro";
 import SiteNav from "../components/SiteNav.astro";
 import ogDefault from "../assets/og-default.jpg";
 import { social } from "../site.config";
@@ -152,6 +153,13 @@ const contactLinks = [
       >Skip to content</a
     >
 
+    {
+      /* The viewing gate. Rendered on every public page, because a visitor can
+        land on a project page from a search result or a shared link just as
+        easily as on the home page. It renders `hidden` and reveals itself. */
+    }
+    <AccessGate />
+
     <SiteNav />
 
     {
@@ -209,6 +217,26 @@ const contactLinks = [
                   </li>
                 ))
               }
+
+              <li>
+                {
+                  /* The resume. A real anchor to the static file, so it
+                    downloads with JavaScript off; `access-gate.ts` hangs a click
+                    handler on `data-resume-link` to report it. The `download`
+                    attribute names the saved file — without it the browser keeps
+                    `resume.pdf`, which is meaningless in a downloads folder. */
+                }
+                <a
+                  class="inline-flex min-h-11 min-w-11 items-center justify-center gap-xs rounded border border-outline-variant px-md font-mono text-label-sm text-ink-navy uppercase transition-colors hover:border-deep-teal hover:text-deep-teal motion-reduce:transition-none"
+                  href="/resume.pdf"
+                  download="Mark-Hugh-Neri-resume.pdf"
+                  data-resume-link
+                >
+                  Resume
+                  <span aria-hidden="true">↓</span>
+                  <span class="sr-only">(PDF download)</span>
+                </a>
+              </li>
             </ul>
           </nav>
 

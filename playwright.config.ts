@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { STORAGE_STATE_PATH } from "./e2e/global-setup.ts";
 
 /**
  * End-to-end suite (#39, SPEC §16, BRAND §9).
@@ -41,6 +42,17 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    /**
+     * Every context starts having already passed the viewing gate.
+     *
+     * Without it the overlay covers the page in every spec, and each one would
+     * have to dismiss it before asserting anything — turning one feature into a
+     * precondition repeated fifty times, and hiding the specs' real subject.
+     *
+     * `gate.spec.ts` clears this and tests the gate directly. That is the one
+     * place it should be exercised.
+     */
+    storageState: STORAGE_STATE_PATH,
   },
 
   projects: [

@@ -29,8 +29,15 @@ Read all three before writing code.
 
 ## Scope
 
-**Public** — home page, project detail pages, contact form that emails through Resend.
-That is the whole site. There is no private surface.
+**Public** — home page, project detail pages, contact form that emails through Resend, and
+a resume download. That is the whole site. There is no private surface.
+
+**The viewing gate** — visitors give an email before the portfolio opens, and downloads are
+reported. It is a **client-side courtesy gate, not an access control**: the HTML is
+prerendered and complete, so view-source, curl and JavaScript-off all bypass it. Nothing
+behind it should be anything that must not be public. It is also an interstitial, which
+carries a mobile-search ranking penalty and stops crawlers seeing past it — accepted
+deliberately, see the amendment in [SPEC.md](docs/SPEC.md).
 
 **Removed deliberately**, having been built and then found not to earn its keep: the admin
 CMS, the database behind it, the media upload pipeline, and the stored contact inbox. The
@@ -73,7 +80,10 @@ a version number; commit the lockfile.
                  │  ├─ /            prerendered HTML         │
                  │  ├─ /work/[slug] prerendered HTML         │
                  │  ├─ /sitemap.xml prerendered              │
+                 │  ├─ /resume.pdf  static file             │
                  │  ├─ /healthz     dynamic (liveness)       │
+                 │  ├─ /api/access  dynamic ────────────┤    │
+                 │  ├─ /api/resume  dynamic ────────────┤    │
                  │  └─ /api/contact dynamic ────────────┐    │
                  └──────────────────────────────────────┼────┘
                                                         │

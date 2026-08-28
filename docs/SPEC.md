@@ -42,6 +42,27 @@ software engineer. Written to be executed by a coding agent.
 >
 > **What is unchanged:** §14's security headers and CSP, §15's SEO and the 30KB JS ceiling,
 > §5's public routes and their shapes, and every requirement in `BRAND.md`.
+>
+> ### Later amendment — the viewing gate
+>
+> Two more dynamic routes exist: `POST /api/access` and `POST /api/resume`. A visitor gives
+> an email before the portfolio is readable, and downloading the resume is reported. Both
+> email the owner; as with contact, **the email is the record** and a provider failure loses
+> it.
+>
+> **The gate is a courtesy, not an access control.** It is a client-side overlay over
+> prerendered HTML: view-source, curl, reader mode and JavaScript-off all bypass it. Nothing
+> behind it may be anything that must not be public. Making it real would mean
+> server-rendering every page behind a session — the architecture this site was moved off.
+>
+> Two consequences accepted on the owner's instruction:
+>
+> - **SEO.** An interstitial is a documented mobile-ranking penalty, and no crawler gets
+>   past it. The §15 work still applies to what a crawler does index.
+> - **Personal data returns.** Email, optional name, and an allowlisted set of browser facts
+>   (page, referrer, user-agent, language, time zone, screen and viewport) plus a truncated
+>   salted IP hash. `/privacy` enumerates exactly this set; the list there and `VisitorSchema`
+>   in `src/lib/visitor.ts` must not drift.
 
 ---
 

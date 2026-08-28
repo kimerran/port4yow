@@ -28,9 +28,19 @@ import { logger } from "./logger";
  * cannot interleave.
  */
 
-/** SPEC §14.9 — contact 5/hr/IP. Login and upload are gone with the admin. */
+/**
+ * SPEC §14.9 — contact 5/hr/IP. Login and upload are gone with the admin.
+ *
+ * `access` and `resume` are looser than contact on purpose: they are triggered
+ * by looking at the site rather than by writing to someone, and a shared office
+ * NAT would otherwise lock a whole floor out of the portfolio after five
+ * visitors. They still need a limit — each one sends an email, so an unbounded
+ * endpoint is an outbound mail amplifier pointed at the owner's inbox.
+ */
 export const RATE_LIMITS = {
   contact: { limit: 5, windowSeconds: 60 * 60 },
+  access: { limit: 20, windowSeconds: 60 * 60 },
+  resume: { limit: 20, windowSeconds: 60 * 60 },
 } as const;
 
 export type RateLimitAction = keyof typeof RATE_LIMITS;
@@ -151,10 +161,14 @@ const toResult = (
  * `subject` must already be a hashed IP — this module never sees a raw address.
  * Pass `hashIp(ip)`.
  *
- * Contact additionally consumes the global flood brake, but ONLY once the
- * per-IP check has passed. Consuming it first would let a single abusive IP burn
- * the shared 50/hour budget and lock everyone else out — turning a per-IP limit
- * into a denial of service against the whole form.
+ * Contact additionally consumes the global flood brake, but ONLY once the per-IP
+ * check has passed. Consuming it first would let a single abusive IP burn the
+ * shared 50/hour budget and lock everyone else out — turning a per-IP limit into
+ * a denial of service against the whole form.
+ *
+ * The brake stays contact-specific. `access` fires on every first visit, so
+ * routing it through a 50/hour shared counter would mean a good day's traffic
+ * silencing the contact form.
  */
 export function consume(
   action: RateLimitAction,
@@ -169,7 +183,7 @@ export function consume(
     now,
   );
 
-  if (!own.allowed) return own;
+  if (!own.allowed || action !== "contact") return own;
 
   const global = toResult(
     bump(CONTACT_GLOBAL_KEY, CONTACT_GLOBAL.windowSeconds, now),
