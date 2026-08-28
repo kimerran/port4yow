@@ -10,3 +10,9 @@ pnpm-lock.yaml
 docs/SPEC.md
 docs/BRAND.md
 docs/AGENT.md
+
+# Portfolio intake output — written by an agent in another repository and copied
+# in as source material for the admin form (docs/portfolio-intake-prompt.md).
+# Same reasoning as the contract documents above: it is not this repo's prose to
+# reformat, and a formatter rewriting it would obscure what the agent produced.
+projects/
