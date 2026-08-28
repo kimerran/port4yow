@@ -68,7 +68,7 @@ describe("every Astro Action guards before it works (SPEC §14.4, AGENT §3)", (
     // would make every assertion below vacuously true.
     expect(names.length).toBeGreaterThanOrEqual(15);
     expect(names).toContain("getStats");
-    expect(names).toContain("saveSetting");
+    expect(names).toContain("saveHeroThesis");
   });
 
   it.each(names)("%s calls requireAdmin as its first statement", (name) => {

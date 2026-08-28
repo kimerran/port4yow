@@ -86,6 +86,25 @@ export function requireAdmin(context: {
 }
 
 /**
+ * The body all four setting actions share (#82).
+ *
+ * `toActionError` turns `InvalidSetting` and `UnknownSetting` into a
+ * `BAD_REQUEST` `ActionError`, so a refusal is a 400 with the validator's own
+ * message — the same convention as every other action in this file.
+ */
+async function persistSetting(
+  key: string,
+  value: string,
+): Promise<{ ok: true }> {
+  try {
+    await saveSetting(key, value);
+    return { ok: true as const };
+  } catch (cause) {
+    return toActionError(cause);
+  }
+}
+
+/**
  * Maps a domain error to the Actions error shape.
  *
  * `BAD_REQUEST` rather than a 500: these are all "you asked for something the
@@ -524,32 +543,66 @@ export const server = {
    * `key` is checked against the closed list inside `validateSetting`, so a
    * caller cannot write a setting nothing reads.
    */
-  saveSetting: defineAction({
+  /**
+   * One action per setting (#82), replacing a single `saveSetting`.
+   *
+   * ## Why four thin handlers beat one general one
+   *
+   * The old action returned `{ ok: false, key, message }` for a domain refusal
+   * instead of throwing, which every other action here does. That was not
+   * carelessness — `/admin/settings` bound four forms to one action, and
+   * `Astro.getActionResult` returns a single result with no record of which
+   * input produced it, so a thrown error rendered under all four fields while
+   * #31 requires the message beside the field it is about.
+   *
+   * The cost was a **domain refusal answering HTTP 200** with `ok: false` in
+   * the body. Harmless while the admin screen is the only caller, because it
+   * reads the body; wrong for anything that checks a status code, which would
+   * record a rejected setting as saved.
+   *
+   * Four actions dissolve the constraint rather than working around it: each
+   * form has its own result, so field attribution is structural, and the
+   * throwing convention is restored. All four share `saveSetting` in
+   * `src/lib/settings.ts`, so there is still exactly one validator.
+   *
+   * The input cap is a **ceiling, not the real limit**. `SETTING_DEFINITIONS`
+   * holds the per-key maximum and `validateSetting` reports it in brand voice
+   * ("That is 250 characters. Hero thesis holds 220."). Putting the true limit
+   * in Zod would replace that with Astro's generic 400 and lose #31's message.
+   */
+  saveHeroThesis: defineAction({
     accept: "form",
-    input: z.object({
-      key: z.string().min(1).max(64),
-      // The real cap is per-key and lives in SETTING_DEFINITIONS; this is only a
-      // ceiling so an absurd body is refused before it is inspected.
-      value: z.string().max(5000),
-    }),
+    input: z.object({ value: z.string().max(5000) }),
     handler: async (input, context) => {
       requireAdmin(context);
-      try {
-        await saveSetting(input.key, input.value);
-        return { ok: true as const, key: input.key, message: null };
-      } catch (cause) {
-        if (
-          cause instanceof InvalidSetting ||
-          cause instanceof UnknownSetting
-        ) {
-          return {
-            ok: false as const,
-            key: input.key,
-            message: cause.message,
-          };
-        }
-        throw cause;
-      }
+      return persistSetting("hero.thesis", input.value);
+    },
+  }),
+
+  saveAboutBody: defineAction({
+    accept: "form",
+    input: z.object({ value: z.string().max(5000) }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      return persistSetting("about.body", input.value);
+    },
+  }),
+
+  saveGithubUrl: defineAction({
+    accept: "form",
+    input: z.object({ value: z.string().max(5000) }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      return persistSetting("social.github", input.value);
+    },
+  }),
+
+  saveLinkedinUrl: defineAction({
+    accept: "form",
+    input: z.object({ value: z.string().max(5000) }),
+    handler: async (input, context) => {
+      requireAdmin(context);
+      return persistSetting("social.linkedin", input.value);
     },
   }),
 };
