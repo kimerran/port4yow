@@ -1,5 +1,20 @@
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
-import { STORAGE_STATE_PATH } from "./e2e/global-setup.ts";
+
+/**
+ * A Playwright storage state that has already passed the viewing gate.
+ *
+ * Declared HERE and imported by `e2e/global-setup.ts`, not the other way round.
+ * The reverse direction type-checks locally and fails the Docker build: the
+ * image excludes `e2e/` (see `.dockerignore`), and `pnpm build` runs
+ * `astro check` over this file — so the config cannot reach into test code.
+ * Measured on Railway, where it failed the deploy and nowhere else.
+ */
+export const STORAGE_STATE_PATH = join(
+  process.cwd(),
+  ".playwright",
+  "state.json",
+);
 
 /**
  * End-to-end suite (#39, SPEC §16, BRAND §9).

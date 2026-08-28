@@ -1,5 +1,4 @@
 import type { MiddlewareHandler } from "astro";
-import { logger, newCorrelationId } from "./lib/logger";
 
 /**
  * Security headers, and nothing else (SPEC §14).
@@ -11,6 +10,19 @@ import { logger, newCorrelationId } from "./lib/logger";
  * CSP is NOT set here: `security.csp` in astro.config.mjs owns it, because Astro
  * hashes the inline scripts and styles it emits and a hand-rolled header could
  * not.
+ *
+ * ## Nothing is imported at module scope
+ *
+ * `logger` reaches `src/lib/env.ts`, which validates the whole runtime
+ * environment at import and throws on anything missing. Middleware runs during
+ * PRERENDERING, so a top-level import of it made `astro build` require
+ * FORM_SECRET, IP_HASH_SALT and CONTACT_TO_EMAIL — secrets that would have to be
+ * passed as Docker build arguments and baked into image layers to satisfy a
+ * build step that has no use for them. Measured: the Railway image would not
+ * build without them.
+ *
+ * The logger is therefore imported inside the error path, which is the only
+ * place it is used. It also keeps the happy path free of any module work at all.
  */
 
 /**
@@ -102,6 +114,8 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   try {
     response = await next();
   } catch (cause) {
+    // Imported here, not at module scope — see the note at the top of the file.
+    const { logger, newCorrelationId } = await import("./lib/logger");
     const correlationId = newCorrelationId();
     logger.error("unhandled error", {
       correlationId,

@@ -8,6 +8,33 @@ import JsonLd from "../components/JsonLd.astro";
 import { listProjects } from "../lib/content";
 import { about, social, stackGroups, thesis } from "../site.config";
 
+/**
+ * The home page renders per request. Everything else is prerendered.
+ *
+ * ## Why this one page is not static
+ *
+ * `ContactForm` mints an HMAC'd `renderedAt` token and `/api/contact` refuses
+ * one older than 30 minutes (`MAX_AGE_MS`). Prerendering stamps that token at
+ * BUILD time — so thirty minutes after any deploy, every real submission was
+ * classified as spam and dropped. SPEC §7 makes the spam path answer 200,
+ * identical to success, so the form would have failed silently and
+ * indefinitely: no error, no bounce, nothing in the log a visitor could see.
+ *
+ * The timing check was broken in both directions, not just one: a build-time
+ * token is always older than `MIN_AGE_MS`, so the "too fast" guard never fired
+ * either.
+ *
+ * The cost of rendering this page per request is close to nothing — it reads
+ * content collections already in memory, with no database behind it. That is a
+ * far better trade than a contact form that quietly stops working.
+ *
+ * It also removes `src/lib/env.ts` from the prerender path entirely, so the
+ * production image no longer needs FORM_SECRET, IP_HASH_SALT or
+ * CONTACT_TO_EMAIL as BUILD arguments — secrets that would otherwise be baked
+ * into image layers to satisfy a build step.
+ */
+export const prerender = false;
+
 const projects = await listProjects();
 
 /**

@@ -59,20 +59,47 @@ test.describe("security headers reach the browser", () => {
     expect(missing).toEqual([]);
   });
 
-  test("the CSP still hashes inline scripts", async ({ page }) => {
+  test("the CSP is delivered, hashed, on both route kinds", async ({
+    page,
+    request,
+  }) => {
     /**
-     * The per-page policy lives in a `<meta>` tag for a static build. It carries
-     * the hashes, which is the part that matters: without them the inline module
-     * scripts would need `unsafe-inline`, and CSP would be decoration.
+     * Astro delivers CSP differently depending on how a route is built, and
+     * both shapes have to be checked because the site now has both.
+     *
+     * - An ON-DEMAND route (`/`, which renders per request so the contact form's
+     *   token is fresh) gets a real `content-security-policy` HEADER.
+     * - A PRERENDERED route (`/privacy`) gets a `<meta http-equiv>` tag, because
+     *   there is no response to attach a header to at build time.
+     *
+     * The first version of this test asserted the meta tag on `/` and broke the
+     * moment that page became dynamic — while the actual security posture had
+     * IMPROVED, since a header outranks a meta tag. Asserting the wrong
+     * mechanism is how a test ends up arguing against a fix.
+     *
+     * What matters in both cases is the hashes: without them the inline module
+     * scripts would need `unsafe-inline`, and the whole policy would be theatre.
      */
-    await page.goto("/");
-    const csp = await page
+    const dynamicCsp =
+      (await request.get("/")).headers()["content-security-policy"] ?? "";
+    expect(dynamicCsp, "no CSP header on the on-demand route").toContain(
+      "default-src 'self'",
+    );
+    expect(dynamicCsp, "inline scripts are not hashed").toMatch(
+      /script-src[^;]*'sha256-/,
+    );
+
+    await page.goto("/privacy");
+    const staticCsp = await page
       .locator('meta[http-equiv="content-security-policy"]')
       .getAttribute("content");
 
-    expect(csp, "no CSP meta tag").not.toBeNull();
-    expect(csp).toContain("default-src 'self'");
-    expect(csp, "inline scripts are not hashed").toMatch(
+    expect(
+      staticCsp,
+      "no CSP meta tag on the prerendered route",
+    ).not.toBeNull();
+    expect(staticCsp).toContain("default-src 'self'");
+    expect(staticCsp, "inline scripts are not hashed").toMatch(
       /script-src[^;]*'sha256-/,
     );
   });

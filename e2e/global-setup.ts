@@ -22,24 +22,19 @@ export interface E2EFixture {
   salt: string;
 }
 
+import { STORAGE_STATE_PATH } from "../playwright.config.ts";
+
+export { STORAGE_STATE_PATH };
+
 export const FIXTURE_PATH = join(process.cwd(), ".playwright", "fixture.json");
 
 /**
- * A Playwright storage state that has already passed the viewing gate.
+ * Where the gate-bypass storage state is written.
  *
- * `playwright.config.ts` loads this for every project, so the specs exercise the
- * site rather than the overlay in front of it. The gate has its own spec, which
- * clears this and tests it directly — the bypass exists so that ONE spec covers
- * the gate instead of every spec having to dismiss it.
- *
- * The key and shape must match `access-gate.ts`. They are duplicated rather than
- * imported because that module is browser-only.
+ * Imported from `playwright.config.ts` rather than declared here: the config
+ * needs it too, and a config that imports from `e2e/` cannot type-check inside
+ * the Docker image, which excludes that directory.
  */
-export const STORAGE_STATE_PATH = join(
-  process.cwd(),
-  ".playwright",
-  "state.json",
-);
 
 const CONTENT_DIR = join(process.cwd(), "src", "content", "projects");
 
