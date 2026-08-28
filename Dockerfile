@@ -90,6 +90,7 @@ WORKDIR /app
 # would let a code-execution bug write anywhere in the container.
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/server.mjs ./server.mjs
 COPY --from=build --chown=node:node /app/package.json ./package.json
 
 USER node
@@ -106,4 +107,4 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 # Just serve. This used to be `prisma migrate deploy && node …`; with no
 # database there is nothing to migrate, which also removes the failure mode
 # where a bad migration took the container down on boot.
-CMD ["node", "./dist/server/entry.mjs"]
+CMD ["node", "./server.mjs"]

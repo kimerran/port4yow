@@ -212,7 +212,8 @@ under `prefers-reduced-motion` where a regression would be suppressed and pass u
 
 **Rank indices, not numbers.** Sections are marked with card ranks in `metallic-gold` Bodoni:
 
-`A` Selected work · `2` The stack · `3` Background · `K` Contact
+~~`A` Selected work · `2` The stack · `3` Background · `K` Contact~~ — the rank markers
+were removed, and the first heading is now **Projects**.
 
 A spread genuinely is an ordered deal, so the rank encodes position. Project tiles use sequence
 numbers (`01`, `02`) in mono because that is a real ordering of the work.
@@ -286,7 +287,7 @@ below `sm` (`px-xs` on links, `px-sm` on the bar) to buy the room the visible la
 at 375px, not assumed.
 
 The label is the accessible name, so WCAG 2.5.3 holds without an `aria-label`. Labels are shortened
-from their section headings ("Selected work" → "Work"); the heading stays long, the link stays
+from their section headings ("Projects" → "Work"); the heading stays long, the link stays
 short. Every link is at least 44×44 including the name, which needs `min-w-11` at 375px where
 "MHN" alone measures 35px.
 
@@ -303,7 +304,7 @@ Plain, specific, slightly dry. Precision is the personality; the cleverness of t
 accuracy, never as jokes.
 
 - No "passionate about", no "crafting digital experiences", no "let's build something amazing".
-- Headings are nouns in sentence case: "Selected work", "The stack", "Background".
+- Headings are nouns in sentence case: "Projects", "The stack", "Background".
 - Buttons name their action and keep the verb through the flow: **Send message** → **Message sent**.
 - Errors say what happened and what to do, in the interface's voice: "That email address looks
   incomplete." Not "Oops! Something went wrong."

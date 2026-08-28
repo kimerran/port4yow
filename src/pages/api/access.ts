@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { logger, newCorrelationId } from "../../lib/logger";
-import { sendVisitAlert } from "../../lib/mail";
+import { sendVisitAlert, sendVisitorWelcome } from "../../lib/mail";
 import { isSameOrigin } from "../../lib/origin";
 import { clientIpFrom, consume, hashIp } from "../../lib/ratelimit";
 import { factsFrom, VisitorSchema } from "../../lib/visitor";
@@ -134,6 +134,17 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
         correlation_id: correlationId,
       });
     }
+
+    /**
+     * 6 · The auto-reply: the resume attached, and a Calendly link.
+     *
+     * Awaited rather than fired and forgotten, so a provider failure is logged
+     * against this correlation id instead of surfacing as an unhandled rejection
+     * with nothing tying it to a submission. It adds a few hundred milliseconds
+     * to a response the visitor is not blocked on — the gate opens client-side
+     * without waiting for this.
+     */
+    await sendVisitorWelcome(data.email, data.name, correlationId);
 
     /**
      * 200 regardless. The visitor gave their email to read a portfolio; holding

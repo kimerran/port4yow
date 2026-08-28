@@ -93,6 +93,11 @@ a version number; commit the lockfile.
                                           └────────────────┘
 ```
 
+`server.mjs` is the production entry point: it sets the security headers, serves
+`dist/client` with immutable caching on hashed assets, and falls through to the Astro
+handler. It exists because the adapter's own static file handler does not run middleware,
+so the headers set there reached only the dynamic routes.
+
 Every page is built to HTML ahead of time and read from disk. The only route that runs per
 request is `POST /api/contact`, which validates, rate-limits and hands the message to
 Resend — it stores nothing. The rate limiter's counters live in the process, so they reset

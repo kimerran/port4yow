@@ -19,12 +19,16 @@ export interface StackGroup {
 /**
  * The hero line, under the name.
  *
- * Taken from the resume's professional summary rather than written fresh.
- * AGENT §6 forbids inventing biography, and "14+ years" is a claim only the
- * resume can source — so it is quoted from there, trimmed to one sentence.
+ * Adapted from the resume's professional summary.
+ *
+ * The year count is the one number here that does NOT match the attached PDF,
+ * which says "14+ years": it was raised to 16+ on Mark's instruction. AGENT §6
+ * forbids inventing biography, and this is the opposite case — the subject
+ * correcting his own record — but the discrepancy is worth flagging rather than
+ * burying, because the resume a visitor downloads still says 14+.
  */
 export const thesis =
-  "Software engineer, 14+ years. Blockchain and backend, full-stack web, smart contracts, and AI-powered products.";
+  "Software engineer, 16+ years. Blockchain and backend, full-stack web, smart contracts, and AI-powered products.";
 
 /**
  * The Background section.
@@ -38,7 +42,7 @@ export const thesis =
  * reading that anything absent from it is off the table.
  */
 export const about =
-  "Fourteen years of building software, and most of it has been learning the next thing. Lately that's blockchain and AI: smart contracts and indexers on EVM chains, work in the Solana and Stellar ecosystems, and the backends, APIs and frontends wrapped around them. Before that, developer experience at Whispir, custody infrastructure at Ripple, platform work at Nixplay, and running DevOps at Krisp Systems. I've been a Developer Relations Engineer for Solana Superteam Philippines, and I'm a Certified Blockchain Developer and Certified Solidity Developer. Cum laude, BS Computer Engineering, Adamson University.\n\nThe stack below is what I've carried longest, not a fence around what I'll work with. I now build almost entirely AI-assisted — Claude Code as the main toolchain, with Kimi and GLM through Ollama Cloud as fallbacks — and the honest effect is that picking up an unfamiliar language or framework costs a fraction of what it used to. So if your project runs on something that isn't on this list, that's genuinely fine. Tell me what the problem is.";
+  "Sixteen years of building software, and most of it has been learning the next thing. Lately that's blockchain and AI: smart contracts and indexers on EVM chains, work in the Solana and Stellar ecosystems, and the backends, APIs and frontends wrapped around them. Before that, developer experience at Whispir, custody infrastructure at Ripple, platform work at Nixplay, and running DevOps at Krisp Systems. I've been a Developer Relations Engineer for Solana Superteam Philippines, and I'm a Certified Blockchain Developer and Certified Solidity Developer. Cum laude, BS Computer Engineering, Adamson University.\n\nThe stack mentioned is what I've carried longest, not a fence around what I'll work with. I now build almost entirely AI-assisted — Claude Code as the main toolchain, with Kimi and GLM through Ollama Cloud as fallbacks — and the honest effect is that picking up an unfamiliar language or framework costs a fraction of what it used to. So if your project runs on something that isn't on this list, that's genuinely fine. Tell me what the problem is.";
 
 export const social: Record<"github" | "linkedin" | "email", string> = {
   github: "https://github.com/kimerran",

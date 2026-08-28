@@ -122,8 +122,7 @@ export default defineConfig({
      * all and supplies the same variables through the job environment. One
      * command that is correct in both places beats two that can disagree.
      */
-    command:
-      "pnpm build && node --env-file-if-exists=.env ./dist/server/entry.mjs",
+    command: "pnpm build && node --env-file-if-exists=.env ./server.mjs",
     url: `${BASE_URL}/healthz`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

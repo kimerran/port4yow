@@ -59,6 +59,21 @@ software engineer. Written to be executed by a coding agent.
 >
 > - **SEO.** An interstitial is a documented mobile-ranking penalty, and no crawler gets
 >   past it. The §15 work still applies to what a crawler does index.
+> - **A welcome email goes to the visitor**, with the resume attached and a Calendly link.
+>   Worth naming as an exposure: anyone can type a third party's address into the gate and
+>   cause mail to be sent to it from this domain. The bounds are the 20/hr/IP limit and a
+>   fixed payload with no attacker-controlled text. The fix, if it ever matters, is a
+>   confirmed opt-in rather than a send on first submission.
+> - **Cloudflare Turnstile** guards the contact form when configured, and is the ONLY
+>   third-party origin the browser talks to — allowed in the CSP by name, not by widening
+>   it. A *missing* token is not a rejection: a no-JS visitor cannot produce one and §7
+>   requires that path to work, so a bot that omits the field is still only caught by the
+>   honeypot.
+> - **Security headers are set by `server.mjs`, not middleware.** The adapter serves
+>   prerendered HTML from its own file handler, which never calls middleware — so the whole
+>   public site shipped with none. The adapter runs in `middleware` mode and `server.mjs`
+>   wraps it; `e2e/headers.spec.ts` asserts against the served response, because a unit test
+>   of the middleware passed throughout.
 > - **Personal data returns.** Email, optional name, and an allowlisted set of browser facts
 >   (page, referrer, user-agent, language, time zone, screen and viewport) plus a truncated
 >   salted IP hash. `/privacy` enumerates exactly this set; the list there and `VisitorSchema`

@@ -85,17 +85,42 @@ const contactLinks = [
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
+    {
+      /* `Referrer-Policy` as a meta tag, in ADDITION to the middleware header.
+        Every page on this site is prerendered, and `@astrojs/node` in standalone
+        mode serves those from its static file handler WITHOUT running
+        middleware — so the headers set there reach only /healthz and the API
+        routes. Measured against the built server: `curl -I /` returned no
+        security headers at all.
+
+        `Referrer-Policy` is one of the few that a meta tag can genuinely set.
+        The rest — HSTS, nosniff, Permissions-Policy, COOP, frame-ancestors —
+        are header-only by specification and cannot be recovered here; they are
+        set by the wrapper in `server.mjs`, which is what the container runs. */
+    }
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
     <Font cssVariable="--font-bodoni-moda" preload />
     <Font cssVariable="--font-karla" />
     <Font cssVariable="--font-plex-mono" />
 
     {
-      /* #40 — without this every page logs a 404 for /favicon.ico, which
-         Lighthouse counts under `errors-in-console` (Best Practices). An SVG
-         rather than an .ico: one file, scales to every size, and no binary
-         asset to regenerate. */
+      /* #40 — without an icon declared, every page logs a 404 for
+         /favicon.ico, which Lighthouse counts under `errors-in-console`.
+
+         Four declarations, not one. The SVG alone was the whole set, which left
+         two real gaps: Safari before 16 and older Edge ignore SVG favicons and
+         fall back to the .ico request that is not there, and iOS "Add to home
+         screen" with no `apple-touch-icon` uses a screenshot of the page.
+
+         Order matters — a browser takes the LAST icon it understands, so the
+         SVG is declared after the PNG so modern browsers get the scalable one
+         and old ones stop at the raster. */
     }
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <link rel="manifest" href="/site.webmanifest" />
 
     <title>{title}</title>
     <meta name="description" content={description} />
@@ -111,7 +136,7 @@ const contactLinks = [
       content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
     />
     <meta name="author" content="Mark Hugh Neri" />
-    <meta name="theme-color" content="#EDF3F3" />
+    <meta name="theme-color" content="#f2f7f7" />
 
     <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content="Mark Hugh Neri" />

@@ -1,6 +1,7 @@
 ---
 import { createFormToken } from "../lib/formToken";
 import Button from "./Button.astro";
+import { env } from "../lib/env";
 
 /**
  * The public contact form (SPEC §7, BRAND §7/§8/§9, #21).
@@ -21,6 +22,15 @@ const field =
   "min-h-11 w-full rounded border border-outline-variant bg-surface-raised px-md py-sm text-body-md text-ink-navy";
 const label = "font-mono text-label-sm text-ink-muted";
 const errorText = "text-[14px] text-error";
+
+/**
+ * Turnstile is optional (SPEC §7). With no keys configured the widget is not
+ * rendered and `/api/contact` expects no token — see `src/lib/turnstile.ts` for
+ * why half-configured is refused at boot rather than tolerated here.
+ *
+ * The site key is baked in at build time, because this page is prerendered.
+ */
+const turnstileSiteKey = env.PUBLIC_TURNSTILE_SITE_KEY;
 ---
 
 <form
@@ -106,7 +116,47 @@ const errorText = "text-[14px] text-error";
   }
   <p class="text-body-md" data-form-status role="status" aria-live="polite"></p>
 
+  {
+    /* The Turnstile widget.
+
+      Inside the <form>, which is what makes it work on BOTH paths: the widget
+      writes a `cf-turnstile-response` hidden input, so the native POST carries
+      it and the enhanced path picks it up automatically via `new FormData(form)`
+      — no change to `contact-form.ts` at all.
+
+      `data-appearance="interaction-only"` keeps it invisible unless Cloudflare
+      actually wants a challenge, which is the whole point of choosing Turnstile
+      over a checkbox CAPTCHA. */
+  }
+  {
+    turnstileSiteKey && (
+      <div
+        class="cf-turnstile"
+        data-sitekey={turnstileSiteKey}
+        data-appearance="interaction-only"
+        data-theme="light"
+      />
+    )
+  }
+
   <div>
     <Button type="submit" class="w-full sm:w-auto">Send message</Button>
   </div>
 </form>
+
+{
+  /* Cloudflare's own script, and the ONLY third-party origin the browser talks
+    to on this site — BRAND §3 self-hosts the fonts precisely to avoid these.
+    It is allowed in `astro.config.mjs`'s CSP by name, not by widening the
+    policy. `async defer` because nothing above it waits on the widget. */
+}
+{
+  turnstileSiteKey && (
+    <script
+      is:inline
+      async
+      defer
+      src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+    />
+  )
+}

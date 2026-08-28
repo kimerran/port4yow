@@ -1,9 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MHN">
-  <rect width="64" height="64" rx="10" fill="#0E2A33" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Mark Hugh Neri">
+  <!-- Brand tokens, not approximations of them: ink-navy ground, cool-stock
+       mark. The previous version used #0E2A33/#EFF6F5, which are near the
+       tokens without being them.
+
+       No accent rule: a bar across the top sits outside the rounded corners and
+       renders as a detached stripe, and at 32px it is noise regardless. -->
+  <rect width="64" height="64" rx="12" fill="#0a191a" />
   <text
-    x="32" y="43"
+    x="32" y="45"
     font-family="Georgia, 'Times New Roman', serif"
-    font-size="30" font-weight="700"
-    text-anchor="middle" fill="#EFF6F5"
+    font-size="34" font-weight="700"
+    text-anchor="middle" fill="#f2f7f7"
   >M</text>
 </svg>

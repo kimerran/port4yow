@@ -41,6 +41,21 @@ function applySecurityHeaders(response: Response): Response {
   response.headers.set("X-Frame-Options", "DENY");
 
   /**
+   * `frame-ancestors` as a real HEADER, because the static build moved Astro's
+   * CSP into a `<meta http-equiv>` tag — and browsers ignore `frame-ancestors`
+   * in a meta tag by specification. The directive was still in the policy,
+   * still looked right in view-source, and was doing nothing.
+   *
+   * A second CSP header does not weaken the meta policy: multiple policies are
+   * INTERSECTED, so each must allow a resource. This one restricts framing and
+   * says nothing about anything else, which is exactly the missing piece.
+   *
+   * `X-Frame-Options` above already covered the clickjacking case in practice;
+   * this is the standards-track control that was supposed to be doing it.
+   */
+  response.headers.append("Content-Security-Policy", "frame-ancestors 'none'");
+
+  /**
    * #43 — an error response with no `Cache-Control` is *heuristically*
    * cacheable, and a 404 is the shape where that bites.
    *

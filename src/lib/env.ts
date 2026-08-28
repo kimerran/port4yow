@@ -90,7 +90,12 @@ const EnvSchema = z
 
     // Email
     RESEND_API_KEY: optional(z.string().min(1)),
-    CONTACT_FROM_EMAIL: z.email().default("hello@mh.neri.ph"),
+    /**
+     * The envelope sender. Must be an address on a domain verified with Resend,
+     * or every send is rejected — which is why the default is the real one
+     * rather than a placeholder that looks plausible and fails in production.
+     */
+    CONTACT_FROM_EMAIL: z.email().default("portfolio@msg.artisam.xyz"),
     CONTACT_TO_EMAIL: z.email(),
     RESEND_ENABLED: boolish.default(false),
     /**
@@ -102,8 +107,36 @@ const EnvSchema = z
      */
     SMTP_URL: z.string().startsWith("smtp://").default("smtp://localhost:1025"),
 
+    /**
+     * Cloudflare Turnstile (SPEC §7 — bot mitigation on the contact form).
+     *
+     * `PUBLIC_TURNSTILE_SITE_KEY` is `PUBLIC_*` and that is correct rather than
+     * a violation of AGENT §3: a Turnstile *site* key is designed to be read
+     * from the page. The secret is not, and is never `PUBLIC_*`.
+     *
+     * Both optional so the site builds and runs without a Cloudflare account —
+     * unconfigured means the widget is not rendered and no token is expected.
+     * The refine below makes half-configured impossible, which is the state
+     * that fails silently: a widget rendered with no server-side verification
+     * is decoration.
+     *
+     * NOTE: the site key is baked in at BUILD time, because every page is
+     * prerendered. Changing it needs a rebuild, not a restart.
+     */
+    PUBLIC_TURNSTILE_SITE_KEY: optional(z.string().min(1)),
+    TURNSTILE_SECRET_KEY: optional(z.string().min(1)),
+
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   })
+  .refine(
+    (e) =>
+      Boolean(e.PUBLIC_TURNSTILE_SITE_KEY) === Boolean(e.TURNSTILE_SECRET_KEY),
+    {
+      message:
+        "PUBLIC_TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY must be set together — a widget with no server-side check verifies nothing.",
+      path: ["TURNSTILE_SECRET_KEY"],
+    },
+  )
   // Fail closed: enabling Resend without a key would silently drop mail (SPEC §7).
   .refine((e) => !e.RESEND_ENABLED || (e.RESEND_API_KEY?.length ?? 0) > 0, {
     message: "RESEND_API_KEY is required when RESEND_ENABLED is true.",

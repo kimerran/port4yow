@@ -44,7 +44,7 @@ const personJsonLd = {
   <JsonLd data={personJsonLd} />
 
   {
-    /* ---- Hero (no rank; BRAND §6 ranks start at Selected work) ----
+    /* ---- Hero ----
       Row only at lg. At md the display face jumps to 96px (BRAND §3) while the
       hero panel is already 380px; side by side they overflow a 768px viewport by
       ~21px — measured, not assumed. Below lg the panel stacks under the name. */
@@ -69,9 +69,9 @@ const personJsonLd = {
     <HeroCard projects={projects} />
   </section>
 
-  {/* ---- A · Selected work ---- */}
+  {/* ---- Projects ---- */}
   <section id="work" class="flex flex-col gap-lg py-xl reveal sm:py-2xl">
-    <h2 class="font-display text-headline-md">Selected work</h2>
+    <h2 class="font-display text-headline-md">Projects</h2>
     {
       projects.length > 0 ? (
         <ul class="reveal-stagger grid list-none gap-lg sm:grid-cols-2 lg:grid-cols-3">

@@ -17,7 +17,8 @@
     "lint": "eslint . && prettier --check .",
     "typecheck": "astro check",
     "audit": "pnpm audit --audit-level=moderate",
-    "mail:up": "docker compose up -d"
+    "mail:up": "docker compose up -d",
+    "start": "node ./server.mjs"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.4",
@@ -25,6 +26,7 @@
     "nodemailer": "^9.0.5",
     "resend": "^6.24.0",
     "sharp": "^0.35.4",
+    "sirv": "^3.0.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

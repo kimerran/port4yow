@@ -5,6 +5,7 @@ import { logger, newCorrelationId } from "../../lib/logger";
 import { isSameOrigin } from "../../lib/origin";
 import { sendContactEmail } from "../../lib/mail";
 import { clientIpFrom, consume, hashIp } from "../../lib/ratelimit";
+import { verifyTurnstile } from "../../lib/turnstile";
 
 export const prerender = false;
 
@@ -177,12 +178,26 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
      */
     const token = verifyFormToken(data.renderedAt);
     const honeypotFilled = (data.company ?? "").length > 0;
-    const isSpam = honeypotFilled || !token.valid;
+
+    /**
+     * Turnstile, when configured. A token that is PRESENT and rejected takes
+     * the spam path; an absent token does not, because a no-JS visitor cannot
+     * produce one and SPEC §7 requires that path to work. `turnstile.ts`
+     * documents the gap that leaves.
+     */
+    const turnstile = await verifyTurnstile(
+      raw["cf-turnstile-response"],
+      correlationId,
+    );
+
+    const isSpam = honeypotFilled || !token.valid || !turnstile.ok;
     const spamReason = honeypotFilled
       ? "honeypot"
-      : token.valid
-        ? null
-        : token.reason;
+      : !token.valid
+        ? token.reason
+        : turnstile.ok
+          ? null
+          : `turnstile:${turnstile.reason}`;
 
     if (isSpam) {
       /**

@@ -2,6 +2,7 @@ import { createTransport } from "nodemailer";
 import { Resend } from "resend";
 import { env } from "./env";
 import { logger } from "./logger";
+import { readResume, RESUME_FILENAME } from "./resume";
 
 /**
  * Outbound mail (SPEC §7, §12, §14.6, §14.8). One wrapper, two backends:
@@ -303,6 +304,140 @@ export async function sendVisitAlert(
     logger.error("visit alert failed", {
       correlation_id: correlationId,
       kind: input.kind,
+      backend: env.RESEND_ENABLED ? "resend" : "smtp",
+      reason: cause instanceof Error ? cause.message : "unknown",
+    });
+    return {
+      ok: false,
+      error: cause instanceof Error ? cause.message : "unknown",
+    };
+  }
+}
+
+/** Where a conversation goes next, if they want one. */
+export const CALENDLY_URL = "https://calendly.com/markneri/";
+
+/**
+ * The auto-reply a visitor gets after passing the gate: the resume attached, and
+ * an offer to talk.
+ *
+ * ## This mails a stranger-supplied address, and that is a real exposure
+ *
+ * Anyone can type someone else's address into the gate and cause mail to be sent
+ * to it from this domain. That makes the endpoint a small, targeted mailer for
+ * whoever wants to use it. The mitigations are the 20/hr/IP limit and the fact
+ * that the payload is fixed — there is no attacker-controlled text in the body,
+ * only the name, which is escaped and rendered as a greeting.
+ *
+ * What it is NOT protected against is someone using it to send an unwanted
+ * message to a specific person a few times an hour. That is worth knowing before
+ * this ships; the fix, if it ever matters, is a confirmed opt-in rather than a
+ * send on first submission.
+ */
+export function renderVisitorWelcome(name?: string): RenderedEmail {
+  const greeting = name ? `Hi ${name},` : "Hi,";
+
+  const lines = [
+    greeting,
+    "",
+    "Thanks for looking through my portfolio — my resume is attached.",
+    "",
+    "I'm a software engineer with 16+ years across blockchain, backend and",
+    "full-stack work, and I build almost entirely AI-assisted these days.",
+    "If you're hiring, scoping something, or just want to compare notes,",
+    "the easiest way is to grab a slot:",
+    "",
+    CALENDLY_URL,
+    "",
+    "Or reply to this email — it reaches me directly.",
+    "",
+    "— Mark",
+  ];
+
+  const html = [
+    `<p>${escapeHtml(greeting)}</p>`,
+    "<p>Thanks for looking through my portfolio — my resume is attached.</p>",
+    "<p>I'm a software engineer with 16+ years across blockchain, backend and full-stack work, and I build almost entirely AI-assisted these days. If you're hiring, scoping something, or just want to compare notes, the easiest way is to grab a slot:</p>",
+    `<p><a href="${CALENDLY_URL}">${CALENDLY_URL}</a></p>`,
+    "<p>Or reply to this email — it reaches me directly.</p>",
+    "<p>— Mark</p>",
+  ].join("\n");
+
+  return {
+    subject: "Mark Hugh Neri — resume, and an open invitation",
+    text: lines.join("\n"),
+    html,
+  };
+}
+
+/**
+ * Sends the auto-reply. NEVER THROWS — the visitor's page must not fail because
+ * their own courtesy email did.
+ *
+ * `replyTo` is the owner's inbox rather than the send-from address, so a reply
+ * lands somewhere a person reads.
+ */
+export async function sendVisitorWelcome(
+  to: string,
+  name: string | undefined,
+  correlationId?: string,
+): Promise<SendResult> {
+  const rendered = renderVisitorWelcome(name);
+  const from = `Mark Hugh Neri <${env.CONTACT_FROM_EMAIL}>`;
+  const pdf = readResume();
+
+  try {
+    if (env.RESEND_ENABLED) {
+      const { data, error } = await getResend().emails.send(
+        {
+          from,
+          to: headerSafe(to),
+          replyTo: env.CONTACT_TO_EMAIL,
+          subject: rendered.subject,
+          text: rendered.text,
+          html: rendered.html,
+          ...(pdf
+            ? {
+                attachments: [
+                  {
+                    filename: RESUME_FILENAME,
+                    content: pdf.toString("base64"),
+                  },
+                ],
+              }
+            : {}),
+        },
+        // The correlation id, so a retry of the same submission cannot send two.
+        { idempotencyKey: `welcome-${correlationId ?? to}` },
+      );
+
+      if (error || !data) {
+        logger.error("welcome email failed", {
+          correlation_id: correlationId,
+          backend: "resend",
+          reason: error?.message ?? "resend returned no data",
+        });
+        return { ok: false, error: error?.message ?? "no data" };
+      }
+      return { ok: true, providerId: data.id, backend: "resend" };
+    }
+
+    const info = await createTransport(env.SMTP_URL).sendMail({
+      from,
+      to: headerSafe(to),
+      replyTo: env.CONTACT_TO_EMAIL,
+      subject: rendered.subject,
+      text: rendered.text,
+      html: rendered.html,
+      ...(pdf
+        ? { attachments: [{ filename: RESUME_FILENAME, content: pdf }] }
+        : {}),
+    });
+
+    return { ok: true, providerId: info.messageId, backend: "smtp" };
+  } catch (cause) {
+    logger.error("welcome email failed", {
+      correlation_id: correlationId,
       backend: env.RESEND_ENABLED ? "resend" : "smtp",
       reason: cause instanceof Error ? cause.message : "unknown",
     });

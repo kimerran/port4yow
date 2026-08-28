@@ -89,11 +89,17 @@ if (process.env.NODE_ENV === "production" && !process.env.PUBLIC_SITE_URL) {
 // the database. Projects are files now, so the only route that cannot be built
 // ahead of time is POST /api/contact, which opts out with `prerender = false`.
 // The adapter stays for exactly that one route (and for /healthz).
+//
+// `middleware` mode, not `standalone`. Standalone's `entry.mjs` starts its own
+// listener the moment it is imported, so `server.mjs` — which wraps the handler
+// to put security headers on every response — became a SECOND listener and
+// crashed with EADDRINUSE. Middleware mode exports the handler without binding,
+// which is what a wrapper needs.
 // Tailwind v4 is CSS-first: tokens live in @theme in src/styles/global.css.
 // There is no tailwind.config.js and never a CDN script (BRAND §11). CSP in #33.
 export default defineConfig({
   output: "static",
-  adapter: node({ mode: "standalone" }),
+  adapter: node({ mode: "middleware" }),
   /**
    * Absolute URLs for the sitemap, robots.txt, canonicals and OG tags.
    *
@@ -129,7 +135,26 @@ export default defineConfig({
      */
     csp: {
       algorithm: "SHA-256",
+
+      /**
+       * The ONE third-party origin on this site.
+       *
+       * BRAND §3 self-hosts the fonts specifically so the browser talks to
+       * nobody but us; Turnstile is the deliberate exception, added by name
+       * rather than by relaxing the policy. Three directives are needed and all
+       * three are load-bearing: the widget is a script, it renders in an iframe,
+       * and it posts the challenge result back to Cloudflare.
+       *
+       * `resources` REPLACES the default `script-src` sources, so `'self'` has
+       * to be restated. Astro still appends its own per-page hashes.
+       */
+      scriptDirective: {
+        resources: ["'self'", "https://challenges.cloudflare.com"],
+      },
+
       directives: [
+        "frame-src https://challenges.cloudflare.com",
+        "connect-src 'self' https://challenges.cloudflare.com",
         "default-src 'self'",
         "frame-ancestors 'none'",
         "base-uri 'self'",
@@ -138,8 +163,6 @@ export default defineConfig({
         // Fonts are self-hosted by #9, so no third-party origin is needed.
         "font-src 'self'",
         "img-src 'self' data:",
-        "connect-src 'self'",
-        "frame-src 'none'",
         "manifest-src 'self'",
         "media-src 'self'",
         "worker-src 'self'",

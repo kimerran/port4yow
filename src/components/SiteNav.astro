@@ -24,9 +24,9 @@ import ScrollRail from "./ScrollRail.astro";
  * the labels are now visible everywhere, and the horizontal padding tightens
  * below `sm` to buy the room that costs. Measured at 375px, not assumed.
  *
- * The section headings are "Selected work" and "The stack" (BRAND §8). A nav is
- * not a heading: four full headings do not fit a bar at 375px, and a link
- * labelled "Work" pointing at a section titled "Selected work" reads correctly.
+ * The section headings are "Projects" and "The stack" (BRAND §8). A nav is not a
+ * heading: the full set does not fit a bar at 375px, and a link labelled "Work"
+ * pointing at a section titled "Projects" reads correctly.
  */
 
 const links = [
@@ -61,7 +61,25 @@ const links = [
     ><span class="sr-only"> — home</span></a
   >
 
-  <ul class="flex items-center">
+  {
+    /*
+      The list scrolls sideways below `sm` rather than the page doing it.
+
+      Five items at a 44px floor plus "Background" at 92px do not fit 320px —
+      measured at 42px of page overflow, caught by responsive.spec's 320 guard.
+      The alternatives were all worse: shrinking the labels below BRAND §3's
+      12px, abbreviating "Background" into something that no longer matches the
+      heading it points at, dropping an item on small screens, or wrapping to a
+      second row (which breaks the scroll rail's `top-14` offset).
+
+      `min-w-0` is the part that does the work: a flex child defaults to
+      `min-width: auto` and refuses to shrink below its content, which is what
+      pushed the overflow onto the page in the first place.
+    */
+  }
+  <ul
+    class="flex min-w-0 [scrollbar-width:none] items-center overflow-x-auto [&::-webkit-scrollbar]:hidden"
+  >
     {
       links.map((link) => (
         <li>
@@ -74,6 +92,41 @@ const links = [
         </li>
       ))
     }
+
+    <li>
+      {
+        /* The resume, styled as a button so it reads as a thing you get rather
+          than a place you go — the other four are in-page anchors.
+
+          The word is `sr-only` below `sm` and the arrow carries it visually,
+          because four section labels plus "RESUME" do not fit 375px. One element
+          with `sr-only sm:not-sr-only` rather than a visible span and an
+          `sr-only` twin: the twin puts the word in the DOM twice and lets the
+          two drift apart. The arrow is `aria-hidden`, so the accessible name is
+          "Resume (PDF download)" at every width.
+
+          A real anchor to the static file, so it downloads with JavaScript off;
+          `access-gate.ts` hangs the download report on `data-resume-link`.
+
+          `relative` is load-bearing, not decoration. `sr-only` is
+          `position: absolute`, so an unpositioned anchor hands its hidden text
+          to the nearest positioned ancestor — the sticky <nav> — which puts it
+          OUTSIDE the list's `overflow-x-auto` and therefore outside its
+          clipping. Measured: 19px of page overflow at 320px from two invisible
+          spans. The section links get this for free from `nav-underline`, which
+          sets `position: relative` for its underline. */
+      }
+      <a
+        href="/resume.pdf"
+        download="Mark-Hugh-Neri-resume.pdf"
+        data-resume-link
+        class="relative ml-xs flex h-11 min-w-11 items-center justify-center gap-xs rounded border border-outline-variant px-xs font-mono text-label-sm text-ink-navy uppercase transition-colors hover:border-deep-teal hover:text-deep-teal motion-reduce:transition-none sm:ml-sm sm:px-sm"
+      >
+        <span class="sr-only sm:not-sr-only">Resume</span>
+        <span aria-hidden="true">↓</span>
+        <span class="sr-only">(PDF download)</span>
+      </a>
+    </li>
   </ul>
 </nav>
 

@@ -94,13 +94,14 @@ export default defineConfig(
   },
 
   {
-    // Build-time config and scripts run in Node before the app boots and legitimately
-    // read process.env; src/lib/env.ts is the runtime boundary (SPEC §10), not this.
-    files: [
-      "*.config.{js,mjs,ts}",
-      "scripts/**/*.{js,mjs,ts}",
-      "prisma/**/*.ts",
-    ],
+    // Build-time config, scripts, and the production entry point run in Node
+    // before or outside the app and legitimately read process.env; src/lib/env.ts
+    // is the runtime boundary (SPEC §10), not this.
+    //
+    // `server.mjs` is the wrapper that puts security headers on responses the
+    // Astro adapter serves from its static file handler — it is the process, so
+    // `process` and `console` are exactly what it has.
+    files: ["*.config.{js,mjs,ts}", "server.mjs", "scripts/**/*.{js,mjs,ts}"],
     languageOptions: { globals: { ...globals.node } },
     rules: { "no-console": "off" },
   },
