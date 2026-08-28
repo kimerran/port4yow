@@ -123,6 +123,23 @@ export default defineConfig({
      * command that is correct in both places beats two that can disagree.
      */
     command: "pnpm build && node --env-file-if-exists=.env ./server.mjs",
+
+    /**
+     * The suite must never send real mail, and it did.
+     *
+     * `--env-file-if-exists=.env` is what makes one command correct in both a
+     * developer's checkout and CI — but the moment `RESEND_ENABLED=true` is set
+     * for production, this suite starts delivering. It submits the contact form
+     * and the access gate across four projects, so one run is dozens of live
+     * emails to a real inbox and a hole in the Resend quota. Measured: a run
+     * with Resend enabled put ZERO messages in Mailpit and failed the contact
+     * spec, because the mail had gone out for real.
+     *
+     * Overriding here rather than asking anyone to remember: `env` is merged
+     * after the file is loaded, so this wins regardless of what `.env` says.
+     */
+    env: { RESEND_ENABLED: "false" },
+
     url: `${BASE_URL}/healthz`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
