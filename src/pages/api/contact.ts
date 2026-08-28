@@ -190,6 +190,32 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
       correlationId,
     );
 
+    /**
+     * A stale Turnstile token is answered, not swallowed.
+     *
+     * Tokens expire after 300 seconds. Someone who opens the page and takes six
+     * minutes over their message has a genuinely expired token, and SPEC §7's
+     * silent 200 would drop that message without telling anyone — the exact
+     * failure the build-time form token was just fixed for. This is the one
+     * place the indistinguishable-200 rule is deliberately not applied, because
+     * the visitor can act on the answer: the widget refreshes and they resubmit.
+     *
+     * A bot learns only that its token was rejected, which it could infer from
+     * being unable to solve the challenge in the first place.
+     */
+    if (!turnstile.ok && turnstile.retryable) {
+      logger.info("contact turnstile token stale", {
+        correlation_id: correlationId,
+        reason: turnstile.reason,
+      });
+      return json(400, {
+        ok: false,
+        errors: {
+          turnstile: "That verification expired. Try sending again.",
+        },
+      });
+    }
+
     const isSpam = honeypotFilled || !token.valid || !turnstile.ok;
     const spamReason = honeypotFilled
       ? "honeypot"

@@ -153,7 +153,24 @@ export default defineConfig({
      * Overriding here rather than asking anyone to remember: `env` is merged
      * after the file is loaded, so this wins regardless of what `.env` says.
      */
-    env: { RESEND_ENABLED: "false" },
+    env: {
+      RESEND_ENABLED: "false",
+      /**
+       * Turnstile off for the suite as well, and for a related reason.
+       *
+       * A sitekey is bound to the domains registered for that widget. The real
+       * one is registered for mh.neri.ph, so on `localhost` the script renders
+       * an error rather than a challenge — the suite would then be asserting
+       * against a broken third-party iframe, and failing for reasons that have
+       * nothing to do with this codebase.
+       *
+       * `src/lib/turnstile.ts` treats both keys absent as a supported state, so
+       * clearing them is a real configuration rather than a special test path.
+       * `verifyTurnstile` has unit coverage for the branches this skips.
+       */
+      PUBLIC_TURNSTILE_SITE_KEY: "",
+      TURNSTILE_SECRET_KEY: "",
+    },
 
     url: `${BASE_URL}/healthz`,
     reuseExistingServer: !process.env.CI,

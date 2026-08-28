@@ -54,6 +54,17 @@ const clearErrors = (form: HTMLFormElement): void => {
   }
 };
 
+/**
+ * Cloudflare injects this when the widget script loads. Declared rather than
+ * cast at the call site so `?.` is the only guard needed — with Turnstile
+ * unconfigured the script is never rendered and the global is simply absent.
+ */
+declare global {
+  interface Window {
+    turnstile?: { reset: (container?: string | HTMLElement) => void };
+  }
+}
+
 export function initContactForm(root: ParentNode = document): void {
   const form = root.querySelector<HTMLFormElement>("#contact-form");
   if (!form) return;
@@ -100,11 +111,26 @@ export function initContactForm(root: ParentNode = document): void {
           .catch(() => ({}))) as ErrorPayload;
 
         if (payload.errors) {
-          for (const [name, text] of Object.entries(payload.errors)) {
+          /**
+           * `turnstile` is not a field anyone filled in, so it has no
+           * `[data-error-for]` target and no "field needs attention" to point
+           * at. It goes straight to the live region instead, and the widget is
+           * reset — a Turnstile token is single-use, so resubmitting with the
+           * spent one would fail identically forever.
+           */
+          const { turnstile: turnstileError, ...fieldErrors } = payload.errors;
+
+          if (turnstileError !== undefined) {
+            window.turnstile?.reset();
+            if (status) status.textContent = turnstileError;
+          }
+
+          for (const [name, text] of Object.entries(fieldErrors)) {
             setFieldError(form, name, text);
           }
-          const count = Object.keys(payload.errors).length;
-          if (status) {
+
+          const count = Object.keys(fieldErrors).length;
+          if (status && count > 0) {
             status.textContent =
               count === 1
                 ? "One field needs attention."

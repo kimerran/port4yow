@@ -33,7 +33,20 @@ const TIMEOUT_MS = 5_000;
 
 export type TurnstileResult =
   | { ok: true; reason: "disabled" | "absent" | "verified" }
-  | { ok: false; reason: string };
+  /**
+   * `retryable` separates a stale token from a hostile one.
+   *
+   * Cloudflare tokens expire after **300 seconds** and are single-use. A person
+   * who opens the page, writes for six minutes and submits presents a token
+   * that is genuinely expired — indistinguishable from an attack by its error
+   * code, but not by its cause. Answering that with SPEC §7's silent 200 would
+   * drop a real message and tell nobody, which is the same failure class as the
+   * build-time form token.
+   *
+   * So `timeout-or-duplicate` and `invalid-input-response` are surfaced to the
+   * visitor as "try again"; everything else takes the quiet spam path.
+   */
+  | { ok: false; retryable: boolean; reason: string };
 
 export const turnstileConfigured = (): boolean =>
   Boolean(env.PUBLIC_TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY);
@@ -81,17 +94,50 @@ export async function verifyTurnstile(
 
     const data = (await response.json()) as {
       success?: boolean;
+      hostname?: string;
       "error-codes"?: string[];
     };
 
-    if (data.success === true) return { ok: true, reason: "verified" };
+    if (data.success === true) {
+      /**
+       * Hostname check, which Cloudflare documents as recommended practice and
+       * which matters because a **sitekey is public by design**. Without it,
+       * anyone can embed this widget on their own page, collect tokens from
+       * real humans solving a real challenge, and replay them here — the token
+       * verifies, because it IS valid, just not for this site.
+       *
+       * Compared against the configured origin rather than the request Host
+       * header, which is caller-controlled and would make the check circular.
+       */
+      const expected = new URL(env.PUBLIC_SITE_URL).hostname;
+      const actual = data.hostname;
 
-    return {
-      ok: false,
-      // Cloudflare's own codes, which are enumerated and safe to log. No token
-      // and no secret ever reaches a log line.
-      reason: (data["error-codes"] ?? ["unknown"]).join(","),
-    };
+      if (actual && actual !== expected) {
+        logger.warn("turnstile token solved for another host", {
+          correlation_id: correlationId,
+          expected,
+          actual,
+        });
+        return { ok: false, retryable: false, reason: `hostname:${actual}` };
+      }
+
+      return { ok: true, reason: "verified" };
+    }
+
+    // Cloudflare's own codes, which are enumerated and safe to log. No token
+    // and no secret ever reaches a log line.
+    const codes = data["error-codes"] ?? ["unknown"];
+
+    /**
+     * These two mean "this token is no good any more", not "you are a bot":
+     * an expired token, or one already redeemed by a double-submit.
+     */
+    const retryable = codes.some(
+      (code) =>
+        code === "timeout-or-duplicate" || code === "invalid-input-response",
+    );
+
+    return { ok: false, retryable, reason: codes.join(",") };
   } catch (cause) {
     logger.warn("turnstile check failed; allowing submission", {
       correlation_id: correlationId,

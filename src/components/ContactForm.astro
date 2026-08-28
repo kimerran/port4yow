@@ -28,7 +28,9 @@ const errorText = "text-[14px] text-error";
  * rendered and `/api/contact` expects no token — see `src/lib/turnstile.ts` for
  * why half-configured is refused at boot rather than tolerated here.
  *
- * The site key is baked in at build time, because this page is prerendered.
+ * The site key is read per request: this page is `prerender = false`, and
+ * `env.ts` reads `process.env` rather than `import.meta.env`, so nothing is
+ * compiled in.
  */
 const turnstileSiteKey = env.PUBLIC_TURNSTILE_SITE_KEY;
 ---
@@ -126,7 +128,13 @@ const turnstileSiteKey = env.PUBLIC_TURNSTILE_SITE_KEY;
 
       `data-appearance="interaction-only"` keeps it invisible unless Cloudflare
       actually wants a challenge, which is the whole point of choosing Turnstile
-      over a checkbox CAPTCHA. */
+      over a checkbox CAPTCHA.
+
+      `refresh-expired` and `retry` are Cloudflare's defaults, set explicitly
+      because both matter here: a token is valid for 300 seconds and is
+      single-use, so refresh keeps a long-dwell visitor from submitting a dead
+      one, and retry recovers a challenge that failed on a flaky network rather
+      than leaving the form permanently unsubmittable. */
   }
   {
     turnstileSiteKey && (
@@ -135,6 +143,8 @@ const turnstileSiteKey = env.PUBLIC_TURNSTILE_SITE_KEY;
         data-sitekey={turnstileSiteKey}
         data-appearance="interaction-only"
         data-theme="light"
+        data-refresh-expired="auto"
+        data-retry="auto"
       />
     )
   }

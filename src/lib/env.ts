@@ -120,8 +120,11 @@ const EnvSchema = z
      * that fails silently: a widget rendered with no server-side verification
      * is decoration.
      *
-     * NOTE: the site key is baked in at BUILD time, because every page is
-     * prerendered. Changing it needs a rebuild, not a restart.
+     * The site key is read at RUNTIME, not compiled in. It reaches the page
+     * through this module — which parses `process.env` — rather than through
+     * `import.meta.env`, which Astro would substitute at build. Verified by
+     * starting a built server with a different value and seeing it in the HTML.
+     * Changing it is a restart, not a rebuild.
      */
     PUBLIC_TURNSTILE_SITE_KEY: optional(z.string().min(1)),
     TURNSTILE_SECRET_KEY: optional(z.string().min(1)),
