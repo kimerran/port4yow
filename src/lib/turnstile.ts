@@ -15,15 +15,17 @@ import { logger } from "./logger";
  *
  * ## What a missing token means
  *
- * NOT a rejection. SPEC §7 requires the contact form to work as a plain POST
- * with JavaScript disabled, and a no-JS visitor cannot produce a token — the
- * widget is a script. So a request with no token falls through to the honeypot
- * and timing checks that predate this.
+ * It depends on HOW it is missing — see `verifyTurnstile`. A field that is
+ * absent entirely means no JavaScript ran, which SPEC §7 requires to keep
+ * working; a field that is present and empty means Turnstile ran and withheld a
+ * token, which is refused.
  *
- * That is a real gap, stated rather than papered over: a bot that simply omits
- * the field gets the same treatment as a no-JS human. Turnstile raises the cost
- * of the scripted path; it does not close it. Closing it would mean breaking the
- * no-JS requirement, which is a deliberate accessibility commitment.
+ * The remaining gap, stated rather than papered over: a bot that posts raw
+ * form-encoded data without the field at all still takes the no-JS path and
+ * meets only the honeypot and timing checks. Closing that would mean refusing
+ * every no-JS visitor, which is a deliberate accessibility commitment. What
+ * this does close is the realistic case — a headless browser, which runs the
+ * script, gets the input, and cannot solve the challenge.
  */
 
 const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
@@ -56,7 +58,35 @@ export async function verifyTurnstile(
   correlationId?: string,
 ): Promise<TurnstileResult> {
   if (!turnstileConfigured()) return { ok: true, reason: "disabled" };
-  if (!token || token.length === 0) return { ok: true, reason: "absent" };
+
+  /**
+   * ABSENT and EMPTY are different, and telling them apart is what makes this
+   * check worth having.
+   *
+   * The `cf-turnstile-response` input does not exist in the server HTML —
+   * Turnstile creates it in the browser. So:
+   *
+   * - **absent entirely** → no JavaScript ran. This is the path SPEC §7 requires
+   *   to keep working, so it falls through to the honeypot and timing checks.
+   * - **present but empty** → JavaScript ran, Turnstile rendered its input, and
+   *   then declined to issue a token. That is the automated traffic this exists
+   *   to stop, and it must not be waved through.
+   *
+   * Treating both as "absent" is what the first version did, and it made the
+   * whole integration decorative: a headless browser gets no token, so it took
+   * exactly the same path as a person with JavaScript off. Verified against
+   * production — a submission with no token was accepted and delivered.
+   */
+  if (token === undefined) return { ok: true, reason: "absent" };
+
+  if (token.length === 0) {
+    /**
+     * Retryable, because a human can be here legitimately: the challenge may
+     * still be running when they hit send. The message tells them to wait a
+     * moment, and the widget keeps working in the background.
+     */
+    return { ok: false, retryable: true, reason: "empty" };
+  }
 
   const body = new URLSearchParams({
     secret: env.TURNSTILE_SECRET_KEY ?? "",

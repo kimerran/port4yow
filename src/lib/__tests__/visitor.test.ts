@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { factsFrom, VisitorSchema } from "../visitor";
 
 /**
@@ -146,5 +146,63 @@ describe("renderVisitAlert", () => {
 
     // They land in the same inbox; an identical subject makes them one thread.
     expect(visit.subject).not.toBe(resume.subject);
+  });
+});
+
+/**
+ * The distinction that makes Turnstile more than decoration.
+ *
+ * `cf-turnstile-response` does not exist in the server HTML — the widget creates
+ * it in the browser. So an ABSENT field means no JavaScript ran, and an EMPTY
+ * one means it ran and Turnstile withheld a token. The first version collapsed
+ * both into "allow", which let exactly the automated traffic Turnstile exists to
+ * stop take the no-JS path.
+ *
+ * `resetModules` before each case because `env.ts` parses `process.env` ONCE at
+ * module load and freezes it. Without the reset these tests set variables that
+ * the already-cached module never reads, and every case silently exercised the
+ * "unconfigured" branch — which is how the first version of this suite passed
+ * while asserting nothing.
+ */
+describe("verifyTurnstile: absent is not the same as empty", () => {
+  const withKeys = async (keys: Record<string, string>) => {
+    vi.resetModules();
+    Object.assign(process.env, keys);
+    return import("../turnstile");
+  };
+
+  const CONFIGURED = {
+    PUBLIC_TURNSTILE_SITE_KEY: "site",
+    TURNSTILE_SECRET_KEY: "secret",
+  };
+
+  it("allows an absent field — the no-JS path SPEC §7 requires", async () => {
+    const { verifyTurnstile, turnstileConfigured } = await withKeys(CONFIGURED);
+    expect(turnstileConfigured(), "the fixture did not configure it").toBe(
+      true,
+    );
+
+    const result = await verifyTurnstile(undefined);
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.reason).toBe("absent");
+  });
+
+  it("refuses an empty field — the widget ran and declined", async () => {
+    const { verifyTurnstile } = await withKeys(CONFIGURED);
+    const result = await verifyTurnstile("");
+    expect(result.ok, "an empty token must not be waved through").toBe(false);
+    // Retryable: a person can hit send while the challenge is still running.
+    expect(!result.ok && result.retryable).toBe(true);
+  });
+
+  it("does nothing at all when unconfigured", async () => {
+    // Both keys absent is a supported state, not a half-broken one.
+    const { verifyTurnstile } = await withKeys({
+      PUBLIC_TURNSTILE_SITE_KEY: "",
+      TURNSTILE_SECRET_KEY: "",
+    });
+    const result = await verifyTurnstile("");
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.reason).toBe("disabled");
   });
 });

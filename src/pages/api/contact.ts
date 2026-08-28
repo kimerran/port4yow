@@ -211,7 +211,8 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
       return json(400, {
         ok: false,
         errors: {
-          turnstile: "That verification expired. Try sending again.",
+          turnstile:
+            "Verification did not complete. Give it a moment and send again.",
         },
       });
     }
