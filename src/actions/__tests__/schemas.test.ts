@@ -84,7 +84,10 @@ describe("the enumeration itself", () => {
         "publishProject",
         "reorderProjects",
         "reorderStackItems",
-        "saveSetting",
+        "saveAboutBody",
+        "saveGithubUrl",
+        "saveHeroThesis",
+        "saveLinkedinUrl",
         "setMessageStatus",
         "unpublishProject",
         "updateAltText",
@@ -103,7 +106,7 @@ describe("the enumeration itself", () => {
 
   it("reaches the real schemas, not a mock that accepts everything", () => {
     // Without this, every `accepts(...) === true` below could be vacuous.
-    expect(accepts("saveSetting", { key: "", value: "x" })).toBe(false);
+    expect(accepts("saveHeroThesis", { value: 42 })).toBe(false);
   });
 });
 
@@ -141,32 +144,52 @@ describe("id-shaped inputs", () => {
   });
 });
 
-describe("saveSetting", () => {
-  it("accepts a key at 1 and at 64 characters", () => {
-    expect(accepts("saveSetting", { key: "a", value: "" })).toBe(true);
-    expect(accepts("saveSetting", { key: chars(64), value: "" })).toBe(true);
+describe("the four setting actions (#82)", () => {
+  const SETTING_ACTIONS = [
+    "saveHeroThesis",
+    "saveAboutBody",
+    "saveGithubUrl",
+    "saveLinkedinUrl",
+  ] as const;
+
+  it.each(SETTING_ACTIONS)("%s takes a value and nothing else", (name) => {
+    expect(accepts(name, { value: "anything" })).toBe(true);
+    // No `key` any more: the action IS the key. A stray one is dropped rather
+    // than honoured, which is what stops a form posting to the wrong setting.
+    const parsed = schemaOf(name).safeParse({
+      value: "x",
+      key: "social.github",
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).not.toHaveProperty("key");
   });
 
-  it("refuses a key at 0 and at 65", () => {
-    expect(accepts("saveSetting", { key: "", value: "" })).toBe(false);
-    expect(accepts("saveSetting", { key: chars(65), value: "" })).toBe(false);
+  it.each(SETTING_ACTIONS)("%s accepts an empty value", (name) => {
+    // Clearing a setting is a real operation — the home page omits an empty
+    // social link rather than rendering a dead one.
+    expect(accepts(name, { value: "" })).toBe(true);
   });
 
-  it("accepts a value at the 5000-character ceiling and refuses 5001", () => {
-    expect(accepts("saveSetting", { key: "k", value: chars(5000) })).toBe(true);
-    expect(accepts("saveSetting", { key: "k", value: chars(5001) })).toBe(
-      false,
-    );
+  it.each(SETTING_ACTIONS)("%s refuses a non-string value", (name) => {
+    expect(accepts(name, { value: 42 })).toBe(false);
+    expect(accepts(name, { value: null })).toBe(false);
   });
 
-  it("accepts an empty value — clearing a setting is a real operation", () => {
-    expect(accepts("saveSetting", { key: "k", value: "" })).toBe(true);
+  it.each(SETTING_ACTIONS)("%s requires a value", (name) => {
+    expect(accepts(name, {})).toBe(false);
   });
 
-  it("refuses a non-string value rather than coercing it", () => {
-    // A form sends strings; anything else came from a hand-built request.
-    expect(accepts("saveSetting", { key: "k", value: 42 })).toBe(false);
-    expect(accepts("saveSetting", { key: "k", value: null })).toBe(false);
+  /**
+   * The cap here is a ceiling, not the real limit. `SETTING_DEFINITIONS` holds
+   * the per-key maximum (220 for the hero thesis, 1200 for the background) and
+   * `validateSetting` reports it in brand voice. If Zod enforced the true limit
+   * the admin would get Astro's generic 400 instead of #31's message, so a
+   * 500-character hero thesis must pass *this* gate and fail the next one.
+   */
+  it("passes a value over the per-key limit through to the validator", () => {
+    expect(accepts("saveHeroThesis", { value: chars(500) })).toBe(true);
+    expect(accepts("saveHeroThesis", { value: chars(5000) })).toBe(true);
+    expect(accepts("saveHeroThesis", { value: chars(5001) })).toBe(false);
   });
 });
 
