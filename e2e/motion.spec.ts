@@ -10,8 +10,16 @@ import { fixture } from "./fixture.ts";
  * correct reading and the only way to write this without a flaky sleep.
  *
  * The preference is set on the browser context in `playwright.config.ts`, so it
- * is in place before the first paint — the difference between "the deal was
- * skipped" and "the deal ran and then stopped".
+ * is in place before the first paint — the difference between "the animation was
+ * skipped" and "it ran and then stopped".
+ *
+ * Two checks here used to cover the playing-card metaphor: the hero's deal-in
+ * entrance and the next-card flip. Both mechanics were removed with the metaphor,
+ * so the tests are gone rather than rewritten — there is no reduced-motion
+ * behaviour left to assert about animations that no longer exist. The stronger
+ * claim that replaces them ("nothing animates on entrance for anyone, reduced
+ * motion or not") is not a reduced-motion property, so it lives in `home.spec.ts`
+ * where it runs in a context that has motion enabled.
  */
 
 /**
@@ -54,28 +62,6 @@ test("the context really is in reduced-motion mode", async ({ page }) => {
   expect(reduced).toBe(true);
 });
 
-test("the deal animation does not run", async ({ page }) => {
-  await page.goto("/");
-
-  const dealt = page.locator(".animate-deal").first();
-  if ((await dealt.count()) === 0)
-    test.skip(true, "no dealt card on this page");
-
-  const state = await dealt.evaluate((el) => {
-    const style = getComputedStyle(el);
-    return {
-      animationName: style.animationName,
-      opacity: style.opacity,
-      transform: style.transform,
-    };
-  });
-
-  expect(state.animationName).toBe("none");
-  // Final state, not mid-flight: fully opaque and untransformed.
-  expect(Number(state.opacity)).toBe(1);
-  expect(["none", "matrix(1, 0, 0, 1, 0, 0)"]).toContain(state.transform);
-});
-
 test("a tile lift is disabled and the tile stays put on hover", async ({
   page,
 }) => {
@@ -99,26 +85,24 @@ test("a tile lift is disabled and the tile stays put on hover", async ({
   expect(nothingTransitions(await transitionOf(tile))).toBe(true);
 });
 
-test("the next card does not flip on focus", async ({ page }) => {
+test("the next-project link does not lift on hover", async ({ page }) => {
   const { slugs } = fixture();
   await page.goto(`/work/${slugs[0] as string}`);
 
-  const inner = page
+  const link = page
     .getByRole("navigation", { name: "Next project" })
-    .getByRole("link")
-    .locator("span")
-    .first();
+    .getByRole("link");
 
-  await page
-    .getByRole("navigation", { name: "Next project" })
-    .getByRole("link")
-    .focus();
+  // Same shape as the tile-lift check: scroll first, or `hover()`'s own scroll
+  // shows up as a lift.
+  await link.scrollIntoViewIfNeeded();
+  const before = await link.boundingBox();
+  await link.hover();
+  const after = await link.boundingBox();
 
-  // The flip is instant rather than animated — NextCard's own `motion-reduce`,
-  // which works by removing the transition *property*, not the duration.
-  const style = await transitionOf(inner);
-  expect(style.property).toBe("none");
-  expect(nothingTransitions(style)).toBe(true);
+  expect(before).not.toBeNull();
+  expect(after?.y).toBeCloseTo(before?.y ?? 0, 0);
+  expect(nothingTransitions(await transitionOf(link))).toBe(true);
 });
 
 test("the image scale on a project tile is disabled", async ({ page }) => {

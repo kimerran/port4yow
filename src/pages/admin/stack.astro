@@ -2,7 +2,6 @@
 import { actions } from "astro:actions";
 import AdminLayout from "../../layouts/AdminLayout.astro";
 import Button from "../../components/Button.astro";
-import SuitGlyph from "../../components/SuitGlyph.astro";
 import { assertAdmin } from "../../lib/admin";
 import { db } from "../../lib/db";
 import { SUITS, SUIT_CATEGORY, suitFromEnum } from "../../lib/suits";
@@ -49,7 +48,7 @@ const bySuit = SUITS.map((suit) => ({
 }));
 
 const field =
-  "min-h-11 w-full rounded border border-outline-variant bg-card-face px-md py-sm text-body-md text-ink-navy";
+  "min-h-11 w-full rounded border border-outline-variant bg-surface-raised px-md py-sm text-body-md text-ink-navy";
 const label = "font-mono text-label-sm text-ink-muted";
 ---
 
@@ -105,10 +104,7 @@ const label = "font-mono text-label-sm text-ink-muted";
   {
     bySuit.map((group) => (
       <section class="flex flex-col gap-md">
-        <h2 class="flex items-center gap-xs font-display text-headline-md">
-          <SuitGlyph suit={group.suit} class="h-5 w-5" />
-          {group.category}
-        </h2>
+        <h2 class="font-display text-headline-md">{group.category}</h2>
 
         {group.items.length === 0 ? (
           /* BRAND §8 — an invitation, not an apology. */
@@ -130,7 +126,7 @@ const label = "font-mono text-label-sm text-ink-muted";
             >
               {group.items.map((item, index) => (
                 <li
-                  class="flex flex-wrap items-center gap-md rounded-lg border border-deep-teal/15 bg-card-face p-md card-shadow"
+                  class="flex flex-wrap items-center gap-md rounded-lg border border-deep-teal/15 bg-surface-raised p-md panel-shadow"
                   data-item-id={item.id}
                 >
                   <form

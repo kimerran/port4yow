@@ -101,19 +101,83 @@ test.describe("the next-card chain", () => {
     expect(new Set(visited).size).toBe(published.length);
   });
 
-  test("the card's accessible name comes from the face-up side", async ({
-    page,
-  }) => {
-    // The face-down side is decorative and aria-hidden; if the name came from
-    // there the link would be unlabelled for a screen reader.
+  test("the link is labelled by its visible title", async ({ page }) => {
+    /**
+     * This used to be "the accessible name comes from the face-up side": the
+     * link was a card that flipped, its back was `aria-hidden`, and a name
+     * sourced from the back would have left it unlabelled. There are no longer
+     * two sides — but the claim worth keeping is the one that outlived the
+     * mechanism, so it is asserted against the title rather than against
+     * "non-empty", which the old version would have passed on any stray text.
+     */
     const { slugs } = fixture();
     await page.goto(`/work/${slugs[0] as string}`);
 
     const link = page
       .getByRole("navigation", { name: "Next project" })
       .getByRole("link");
-    const name = await link.evaluate((el) => el.textContent?.trim() ?? "");
+
+    const heading = await page
+      .locator("h1")
+      .evaluate((el) => el.textContent?.trim() ?? "");
+    const name = (
+      await link.evaluate((el) => el.textContent?.trim() ?? "")
+    ).replace(/\s+/g, " ");
+
     expect(name.length).toBeGreaterThan(0);
-    expect(name).not.toBe("");
+    // It names the project it goes to, and that is a different one.
+    expect(name).not.toContain(heading);
+  });
+});
+
+/**
+ * The playing-card metaphor is gone, and these are the guards on it staying gone.
+ *
+ * Deleting the deal keyframes and the flip classes is the kind of change a later
+ * "restore the hero animation" commit reverses without anyone noticing, because
+ * nothing else fails when it comes back. `motion.spec.ts` cannot cover it: it
+ * runs only under `prefers-reduced-motion`, where a restored animation would be
+ * suppressed and the test would pass anyway. This runs with motion enabled.
+ */
+test.describe("the card metaphor stays removed", () => {
+  test("nothing on the home page animates on entrance", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+
+    const animated = await page.evaluate(() =>
+      [...document.querySelectorAll("*")]
+        .filter((el) => {
+          const name = getComputedStyle(el).animationName;
+          return name !== "none" && name !== "";
+        })
+        .map((el) => `${el.tagName.toLowerCase()}.${el.className.toString()}`),
+    );
+
+    expect(animated, "an entrance animation is back").toEqual([]);
+  });
+
+  test("no element is a 5:7 card face or a flip", async ({ page }) => {
+    const { slugs } = fixture();
+
+    for (const path of ["/", `/work/${slugs[0] as string}`]) {
+      await page.goto(path);
+
+      const offenders = await page.evaluate(() =>
+        [...document.querySelectorAll("*")]
+          .filter((el) => {
+            const s = getComputedStyle(el);
+            // 5/7 is the playing-card ratio; `preserve-3d` only ever existed
+            // here to give the flip its perspective.
+            return (
+              s.aspectRatio.replace(/\s/g, "") === "5/7" ||
+              s.transformStyle === "preserve-3d" ||
+              s.backfaceVisibility === "hidden"
+            );
+          })
+          .map((el) => el.tagName.toLowerCase()),
+      );
+
+      expect(offenders, `card geometry found on ${path}`).toEqual([]);
+    }
   });
 });

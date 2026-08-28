@@ -4,7 +4,6 @@ import HeroCard from "../components/HeroCard.astro";
 import ProjectTile from "../components/ProjectTile.astro";
 import ContactForm from "../components/ContactForm.astro";
 import RankIndex from "../components/RankIndex.astro";
-import SuitGlyph from "../components/SuitGlyph.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import JsonLd from "../components/JsonLd.astro";
 import { getHomeData } from "../lib/home";
@@ -52,7 +51,7 @@ const personJsonLd = {
   ...(sameAs.length > 0 ? { sameAs } : {}),
 };
 
-// The hero card's stack list: featured items, in seed order.
+// The hero panel's stack list: featured items, in seed order.
 const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
 ---
 
@@ -62,8 +61,8 @@ const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
   {
     /* ---- Hero (no rank; BRAND §6 ranks start at Selected work) ----
       Row only at lg. At md the display face jumps to 96px (BRAND §3) while the
-      hero card is already 380px; side by side they overflow a 768px viewport by
-      ~21px — measured, not assumed. Below lg the card stacks under the name. */
+      hero panel is already 380px; side by side they overflow a 768px viewport by
+      ~21px — measured, not assumed. Below lg the panel stacks under the name. */
   }
   <section
     class="flex flex-col items-center gap-xl py-2xl lg:flex-row lg:justify-between"
@@ -103,7 +102,7 @@ const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
       ) : (
         /* BRAND §8 — empty states are invitations, not apologies. */
         <p class="text-body-md text-ink-muted">
-          The first cards are still being dealt.
+          The first projects are on their way.
         </p>
       )
     }
@@ -119,10 +118,7 @@ const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
       {
         stackBySuit.map((group) => (
           <div class="flex flex-col gap-sm">
-            <h3 class="flex items-center gap-sm font-mono text-label-sm text-ink-navy uppercase">
-              <span class="text-metallic-gold">
-                <SuitGlyph suit={group.suit} class="h-3 w-3" />
-              </span>
+            <h3 class="font-mono text-label-sm text-ink-navy uppercase">
               {SUIT_CATEGORY[group.suit]}
             </h3>
             <ul class="flex flex-col gap-xs font-mono text-body-md text-ink-muted">

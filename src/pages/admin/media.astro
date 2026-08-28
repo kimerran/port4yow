@@ -97,7 +97,7 @@ const library = [...groups.values()].map((group) => ({
 const kb = (bytes: number): string => `${(bytes / 1024).toFixed(0)} KB`;
 
 const field =
-  "min-h-11 w-full rounded border border-outline-variant bg-card-face px-md py-sm text-body-md text-ink-navy";
+  "min-h-11 w-full rounded border border-outline-variant bg-surface-raised px-md py-sm text-body-md text-ink-navy";
 const label = "font-mono text-label-sm text-ink-muted";
 ---
 
@@ -194,7 +194,7 @@ const label = "font-mono text-label-sm text-ink-muted";
       ) : (
         <ul class="grid gap-md sm:grid-cols-2 lg:grid-cols-3">
           {library.map((item) => (
-            <li class="flex flex-col gap-md rounded-lg border border-deep-teal/15 bg-card-face p-md card-shadow">
+            <li class="flex flex-col gap-md rounded-lg border border-deep-teal/15 bg-surface-raised p-md panel-shadow">
               {item.widest && (
                 <img
                   src={`/api/media/${item.widest.key}`}

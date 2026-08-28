@@ -59,7 +59,7 @@ const FIELD_LABELS: Record<string, string> = {
     rows.length === 0 ? (
       /* BRAND §8 — an empty state is an invitation, not an apology. */
       <p class="text-body-lg text-ink-muted">
-        The deck is empty. Add the first project and it becomes card 01.
+        No projects yet. Add the first one and it becomes 01.
       </p>
     ) : (
       <section class="flex flex-col gap-md">
@@ -78,7 +78,7 @@ const FIELD_LABELS: Record<string, string> = {
         <ol data-reorder-list="projects" class="flex flex-col gap-sm">
           {rows.map((row, index) => (
             <li
-              class="flex flex-wrap items-center gap-md rounded-lg border border-deep-teal/15 bg-card-face p-md card-shadow"
+              class="flex flex-wrap items-center gap-md rounded-lg border border-deep-teal/15 bg-surface-raised p-md panel-shadow"
               data-item-id={row.id}
               data-sequence={row.sequence}
             >

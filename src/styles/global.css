@@ -13,13 +13,13 @@
 @theme {
   /* ---- Grounds (BRAND §2) ---- */
   --color-cool-stock: #f2f7f7; /* page ground — cool paper, never pure white, never cream */
-  --color-card-face: #ffffff; /* cards, panels, inputs — lifted off the ground */
+  --color-surface-raised: #ffffff; /* panels, tiles, inputs — lifted off the ground */
   --color-surface-sunken: #eef5f4; /* inset wells: image frames, code blocks */
 
   /* ---- Ink ---- */
   --color-ink-navy: #0a191a; /* all primary text and headlines */
   --color-ink-muted: #3b4949; /* body copy at secondary emphasis, captions — 7.9:1 on cool-stock */
-  --color-outline: #6b7a7a; /* borders at full strength, placeholder text — 4.6:1 on card-face */
+  --color-outline: #6b7a7a; /* borders at full strength, placeholder text — 4.6:1 on surface-raised */
   --color-outline-variant: #bac9c9; /* hairlines, dividers, disabled */
 
   /* ---- Accents — three, and only three ---- */
@@ -36,9 +36,9 @@
   --color-success: #005354;
 
   /* ---- Elevation: one recipe, sitewide. No glassmorphism, no glows. ---- */
-  --shadow-card:
+  --shadow-panel:
     0 1px 2px rgba(10, 25, 26, 0.08), 0 8px 24px rgba(10, 25, 26, 0.08);
-  --shadow-card-hover:
+  --shadow-panel-hover:
     0 4px 8px rgba(10, 25, 26, 0.12), 0 16px 32px rgba(10, 25, 26, 0.12);
 
   /* ---- Typography (BRAND §3) — three families, three jobs, no overlap.
@@ -79,7 +79,7 @@
 
   /* ---- Geometry (BRAND §4) ---- */
   --radius-DEFAULT: 4px; /* inline chips and inputs */
-  --radius-lg: 8px; /* cards and buttons */
+  --radius-lg: 8px; /* panels and buttons */
 
   /* Spacing scale — nothing between these values. */
   --spacing-xs: 4px;
@@ -89,9 +89,6 @@
   --spacing-xl: 40px;
   --spacing-2xl: 64px;
   --spacing-3xl: 96px;
-
-  /* Card ratio governs. Nothing on this site is a circle or a perfect square. */
-  --aspect-card: 5 / 7;
 }
 
 /* display-xl is deliberately NOT a @theme token.
@@ -117,7 +114,7 @@
 }
 
 /* BRAND §2 — "No gradients except one: the radial metallic-gold wash at 8%
-   behind the hero card." This is that one. It lives here rather than as a style
+   behind the hero panel." This is that one. It lives here rather than as a style
    attribute because CSP blocks inline style attributes outright (#11). */
 @utility hero-wash {
   background: radial-gradient(
@@ -129,18 +126,18 @@
 
 /* The three sanctioned @apply recipes (BRAND §11). Everything else is
    utilities in markup. */
-@utility card-shadow {
-  box-shadow: var(--shadow-card);
+@utility panel-shadow {
+  box-shadow: var(--shadow-panel);
 }
 
-@utility card-hover {
+@utility panel-hover {
   transition:
     transform 300ms ease,
     box-shadow 300ms ease;
 
   &:hover {
     transform: translateY(-4px);
-    box-shadow: var(--shadow-card-hover);
+    box-shadow: var(--shadow-panel-hover);
   }
 
   /* BRAND §9 — reduced motion disables tile lifts entirely. */
@@ -150,27 +147,6 @@
     &:hover {
       transform: none;
     }
-  }
-}
-
-/* The only entrance animation on the site (BRAND §5). */
-@keyframes deal-card {
-  from {
-    opacity: 0;
-    transform: translate(-50px, -50px) rotate(-15deg) scale(1.1);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@utility animate-deal {
-  animation: deal-card 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
   }
 }
 

@@ -2,8 +2,11 @@
 /**
  * BRAND §7 — 2px `deep-teal` line carrying one slight sine curve.
  *
- * `variant="rail"` sits at the base of the 80px desktop rail (vertical);
- * `variant="bar"` is the 2px top progress bar on mobile (horizontal).
+ * `variant="bar"` is the horizontal strip under the sticky nav bar, used at
+ * every width. `variant="rail"` is the vertical form; it was the base of the
+ * 80px desktop left rail and has no caller since the nav became a top bar at
+ * all widths. Kept because it is the same geometry rotated and costs nothing,
+ * but nothing renders it today.
  *
  * aria-hidden: it duplicates information the scrollbar already conveys, so it is
  * decoration to assistive technology (BRAND §6/§9).

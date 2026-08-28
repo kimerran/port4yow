@@ -1,9 +1,7 @@
 ---
-import Card from "../../components/Card.astro";
 import JsonLd from "../../components/JsonLd.astro";
 import MarkdownBody from "../../components/MarkdownBody.astro";
 import ResponsiveImage from "../../components/ResponsiveImage.astro";
-import SuitGlyph from "../../components/SuitGlyph.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import NextCard from "../../components/NextCard.astro";
 import { getNextProject, getPublishedProject } from "../../lib/project";
@@ -30,7 +28,7 @@ Astro.response.headers.set(
   "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
 );
 
-/* #18 — the next card, wrapping to the first. Null when this is the only
+/* #18 — the next project, wrapping to the first. Null when this is the only
    published project, in which case the footer is omitted entirely. */
 const next = await getNextProject(project);
 
@@ -85,26 +83,20 @@ const jsonLd = {
 
   <article class="flex flex-col gap-2xl py-2xl">
     {
-      /* 1 · Hero — the tile enlarged, keeping its index and suit so the card
-        carries over from the grid (SPEC §5). */
-    }
-    <header class="flex flex-col gap-lg lg:flex-row lg:items-start lg:gap-2xl">
-      <div class="w-[280px] shrink-0">
-        <Card class="flex flex-col justify-between p-md">
-          <span
-            class="font-mono text-index-rank text-metallic-gold"
-            aria-hidden="true">{index}</span
-          >
-          <span
-            class="rotate-180 self-end text-metallic-gold"
-            aria-hidden="true"
-          >
-            <SuitGlyph suit={project.suit} />
-          </span>
-        </Card>
-      </div>
+      /* 1 · Hero.
 
+        This was a 280px card face standing beside the title, holding nothing but
+        the sequence index and a suit pip — it existed to carry the playing-card
+        look over from the grid. With the metaphor removed it would have been an
+        empty box, so it is gone and the index moved inline above the title,
+        where it is still the same marker of the same ordering (SPEC §5). */
+    }
+    <header class="flex flex-col gap-lg">
       <div class="flex min-w-0 flex-col gap-md">
+        <span
+          class="font-mono text-index-rank text-metallic-gold"
+          aria-hidden="true">{index}</span
+        >
         {/* One of only four places the display face appears (BRAND §3). */}
         {
           /* break-words because `headline-lg` has no responsive step the way BRAND §3
@@ -225,7 +217,7 @@ const jsonLd = {
     }
 
     {
-      /* 7 · Next card (#18). Omitted when this is the only published project. */
+      /* 7 · Next project (#18). Omitted when this is the only published project. */
     }
     {next && <NextCard next={next} />}
   </article>

@@ -2,18 +2,19 @@
  * BRAND §6 — suits are taxonomy, not ornament. Every project and stack item
  * carries exactly one suit.
  *
- * This lives in a module rather than in `SuitGlyph.astro` because Astro forbids
- * exporting values from components (`astro/no-exports-from-components`), and
- * because the taxonomy is data the schema, the seed and the admin UI all share —
- * not a property of one component.
+ * "Not ornament" is now literal: the suit pips have been removed from the site
+ * along with the rest of the playing-card metaphor, and `SuitGlyph.astro` with
+ * them. What survives is the taxonomy itself — four categories that the schema,
+ * the seed and the admin UI all share, rendered everywhere as their category
+ * names. The suit is the storage key; `SUIT_CATEGORY` is what a visitor reads.
  */
 export const SUITS = ["diamonds", "spades", "hearts", "clubs"] as const;
 
 export type Suit = (typeof SUITS)[number];
 
 /**
- * The category each suit stands for. Callers render this as text so the glyph is
- * never the only thing conveying meaning (BRAND §6, §9).
+ * The category each suit stands for, and the only form of the taxonomy that
+ * reaches a visitor. Callers render this as text; nothing renders the suit name.
  */
 export const SUIT_CATEGORY: Record<Suit, string> = {
   diamonds: "Product & client work",

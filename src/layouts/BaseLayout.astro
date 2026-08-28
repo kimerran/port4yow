@@ -103,7 +103,7 @@ const ogImageUrl = ogImage
     }
     <a
       href="#main"
-      class="sr-only rounded-lg bg-card-face px-md py-sm text-ink-navy focus:not-sr-only focus:absolute focus:top-sm focus:left-sm focus:z-50"
+      class="sr-only rounded-lg bg-surface-raised px-md py-sm text-ink-navy focus:not-sr-only focus:absolute focus:top-sm focus:left-sm focus:z-50"
       >Skip to content</a
     >
 
@@ -124,9 +124,10 @@ const ogImageUrl = ogImage
     </script>
 
     {
-      /* Rail is 80px on desktop; the shell clears it rather than overlapping. */
+      /* The nav is a sticky top bar at every width now, so it takes its own
+         space in the flow — no padding to clear a fixed rail. */
     }
-    <div class="md:pl-20">
+    <div>
       <main
         id="main"
         class="mx-auto w-full max-w-[1280px] px-md py-xl md:px-lg"

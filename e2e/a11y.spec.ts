@@ -445,19 +445,25 @@ test.describe("document structure", () => {
     });
   }
 
-  test("a suit glyph is decorative and never the only label", async ({
+  test("an inline svg is decorative and never the only label", async ({
     page,
   }) => {
     await page.goto("/");
 
-    const glyphs = page.locator("svg[data-suit], svg.suit-glyph, svg");
-    const count = await glyphs.count();
-    expect(count, "no glyphs found — the selector is wrong").toBeGreaterThan(0);
+    /**
+     * This was "a suit glyph is decorative": the suit pips are gone with the
+     * playing-card metaphor, but the claim was never really about suits — it is
+     * about every inline SVG on the page, which is how it was already written.
+     * The scroll rail keeps it from being vacuous.
+     */
+    const svgs = page.locator("svg");
+    const count = await svgs.count();
+    expect(count, "no svgs found — the selector is wrong").toBeGreaterThan(0);
 
     // Every inline SVG is hidden from the tree; the text beside it carries the
-    // meaning. A glyph exposed as an unlabelled graphic is the failure here.
+    // meaning. One exposed as an unlabelled graphic is the failure here.
     for (let i = 0; i < count; i++) {
-      const svg = glyphs.nth(i);
+      const svg = svgs.nth(i);
       const hidden = await svg.getAttribute("aria-hidden");
       const label = await svg.getAttribute("aria-label");
       const role = await svg.getAttribute("role");

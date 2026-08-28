@@ -4,6 +4,27 @@ Visual system for **mh.neri.ph**, the portfolio of Mark Hugh Neri, full-stack en
 Derived from the approved mock. This file is the single source of truth for design decisions.
 If code and this document disagree, this document wins — fix the code.
 
+> ## Amendment — the playing-card metaphor is removed
+>
+> The literal playing card is **gone from the rendered site**: no suit pips, no 5:7 card
+> faces, no corner indices repeated at 180°, no deal-in entrance, no flip-to-reveal.
+> Sections 4, 5, 6, 7, 9 and 11 are amended below and the amended text governs.
+>
+> **What survives**, because none of it depended on the card being literal:
+>
+> - The palette, the type scale, the spacing scale, and the facet lattice.
+> - The single radial `metallic-gold` wash, now behind the hero panel.
+> - The scroll rail — it was always the dragon's line, not a card.
+> - Rank indices (`A`, `2`, `3`, `K`) as section markers, and `01`, `02` as project
+>   ordering. These read as ordinals, not as cards, to anyone who was not told.
+> - **The suit taxonomy as data.** Every project and stack item still carries one of four
+>   suits, because that is the schema and the four categories are real. What changed is
+>   that the suit is now purely a storage key: `SUIT_CATEGORY` is the only form a visitor
+>   sees. See §6.
+>
+> §1's identity line no longer describes the site. The metaphor that remains is
+> **precision**, not cards — the same restraint, minus the costume.
+
 ---
 
 ## 1. Identity in one line
@@ -36,7 +57,7 @@ Light theme only. There is no dark mode in v1 — do not add one.
 @theme {
   /* Grounds */
   --color-cool-stock: #F2F7F7;   /* page ground — cool paper, never pure white, never cream */
-  --color-card-face: #FFFFFF;    /* cards, panels, inputs — lifted off the ground */
+  --color-surface-raised: #FFFFFF; /* panels, tiles, inputs — lifted off the ground */
   --color-surface-sunken: #EEF5F4;/* inset wells: image frames, code blocks */
 
   /* Ink */
@@ -67,13 +88,13 @@ Light theme only. There is no dark mode in v1 — do not add one.
   (12.4:1 — passes). Never cyan text on white; it fails at ~2.2:1.
 - **Deep teal is the rarest ink.** Maximum two appearances per viewport: the scroll rail and prose
   link underlines.
-- **No gradients** except one: the radial `metallic-gold` wash at 8% opacity behind the hero card.
+- **No gradients** except one: the radial `metallic-gold` wash at 8% opacity behind the hero panel.
   The mock's `bg-gradient-to-br from-white/40` sheen on the card face is approved as the single
   exception, since it reads as light on stock rather than as decoration. Delete every other one.
 - **Shadow is the only elevation device.** One recipe, sitewide:
   ```css
-  --shadow-card: 0 1px 2px rgba(10,25,26,.08), 0 8px 24px rgba(10,25,26,.08);
-  --shadow-card-hover: 0 4px 8px rgba(10,25,26,.12), 0 16px 32px rgba(10,25,26,.12);
+  --shadow-panel: 0 1px 2px rgba(10,25,26,.08), 0 8px 24px rgba(10,25,26,.08);
+  --shadow-panel-hover: 0 4px 8px rgba(10,25,26,.12), 0 16px 32px rgba(10,25,26,.12);
   ```
   No glassmorphism, no colored glows, no inner shadows.
 
@@ -121,9 +142,13 @@ headings, project detail titles, and the closing line. Nowhere else.
 
 ## 4. Geometry
 
-- **Card ratio governs.** `aspect-ratio: 5 / 7` on the hero card and every project tile. Nothing on
+- ~~**Card ratio governs.** `aspect-ratio: 5 / 7` on the hero card and every project tile.~~
+  **Amended:** the 5:7 ratio is removed with the metaphor — it *was* the metaphor, more than
+  the pips were. Panels are sized by their content. Where a fixed ratio is still wanted so a
+  grid stays even, the element asks for one directly: the project tile's image well is
+  `16/10` and the hero's inset well is `4/3`. Nothing on
   this site is a circle or a perfect square.
-- **Radius:** `--radius-DEFAULT: 4px` for inline chips and inputs, `--radius-lg: 8px` for cards and
+- **Radius:** `--radius-DEFAULT: 4px` for inline chips and inputs, `--radius-lg: 8px` for panels and
   buttons. **No other values. No `rounded-full`.** The `rounded-full` on the mock's avatar-style
   elements must be removed.
 - **Spacing scale** (Tailwind `--spacing-*`): `4 / 8 / 16 / 24 / 40 / 64 / 96`, named
@@ -140,28 +165,30 @@ headings, project detail titles, and the closing line. Nowhere else.
 
 ## 5. Signature element
 
-**The hero card.** One Jack of Diamonds, face up, 380px wide on desktop / 280px on mobile, in
-`card-face` with a 1px `deep-teal`/15% border and `--shadow-card`.
+**The hero panel.** 380px wide on desktop / 280px on mobile, in `surface-raised` with a 1px
+`deep-teal`/15% border and `--shadow-panel`.
 
-- Top-left index: Bodoni `J` over a diamond pip in `luminous-cyan`. Bottom-right index: the same
-  block rotated 180°, exactly as a real court card repeats itself.
-- Center: an inset well in `surface-sunken` holding the monogram at 10% opacity, with the stack list
-  set in IBM Plex Mono at 10px along the lower half.
+- An inset well in `surface-sunken` holding the monogram at 10% opacity, with the stack list set in
+  IBM Plex Mono at 10px along the lower half. The well carries a `4/3` ratio of its own now that the
+  panel no longer has a fixed height to divide.
 - Behind it: a single radial `metallic-gold` wash at 8%, falling off fast into `cool-stock`.
 
-**Deal animation, on load, once:**
+~~Top-left index: Bodoni `J` over a diamond pip. Bottom-right index: the same block rotated 180°.~~
+**Removed** — that pair of indices *was* the Jack of Diamonds.
 
-```css
-@keyframes deal-card {
-  from { opacity: 0; transform: translate(-50px, -50px) rotate(-15deg) scale(1.1); }
-  to   { opacity: 1; transform: none; }
-}
-.animate-deal { animation: deal-card .8s cubic-bezier(.2,.8,.2,1) both; }
-@media (prefers-reduced-motion: reduce) { .animate-deal { animation: none; } }
-```
+~~**Deal animation, on load, once.**~~ **Removed.** The deal was a card being dealt onto a table;
+with nothing being dealt it had no subject. Its keyframes, the `.animate-deal` utility and the
+`--aspect-card` token are all deleted from `global.css`.
 
-This is the only rotation, the only radial wash, and the only entrance animation on the site. Every
-other element is still until the visitor touches it.
+**There is now no entrance animation on the site at all, and no rotation anywhere.** That is the
+intended end state, not an omission — this section previously called the deal "the only entrance
+animation", so removing it removes the category. The radial wash is still the only gradient. Every
+element is still until the visitor touches it, and on hover only lifts and the image scale remain.
+
+`e2e/home.spec.ts` guards this: one test asserts no element on the home page has a computed
+`animation-name`, and another asserts nothing anywhere has a `5/7` aspect ratio, `preserve-3d`, or
+`backface-hidden`. Those run with motion **enabled** — `motion.spec.ts` runs only under
+`prefers-reduced-motion`, where a restored animation would be suppressed and pass unnoticed.
 
 ---
 
@@ -174,6 +201,9 @@ other element is still until the visitor touches it.
 A spread genuinely is an ordered deal, so the rank encodes position. Project tiles use sequence
 numbers (`01`, `02`) in mono because that is a real ordering of the work.
 
+**These stay.** `A`/`2`/`3`/`K` and `01`/`02` are ordinals; they read as section markers to a
+visitor who was never told about cards, which is exactly the test §1's hard rule sets.
+
 **Suits are taxonomy, not ornament.** Every project and stack item carries exactly one suit:
 
 | Suit | Category |
@@ -183,26 +213,39 @@ numbers (`01`, `02`) in mono because that is a real ordering of the work.
 | ♥ Hearts | Open source |
 | ♣ Clubs | Infrastructure & tooling |
 
-Render suits as inline SVG or the Unicode glyph with `aria-hidden="true"`, always paired with a
-visible or screen-reader text label. Never rely on the glyph alone to convey category. Icon usage
-beyond suits is limited to a small set for social links and form states — **remove the Material
+~~Render suits as inline SVG or the Unicode glyph with `aria-hidden="true"`, always paired with a
+visible or screen-reader text label.~~
+
+**Amended: nothing renders a suit.** The four-way taxonomy is real and stays in the schema, the
+seed and the admin UI — but the **category name is the only form that reaches a visitor**. The pip
+is gone (`SuitGlyph.astro` is deleted), and so is the bare suit word: a tile that once showed a gold
+pip now shows "Product & client work", and the next-project link shows the category rather than the
+word "hearts", which meant nothing without a pip beside it.
+
+This makes the old rule unnecessary rather than violated. "Never rely on the glyph alone to convey
+category" was guarding a glyph that no longer exists; the category is now always the text itself.
+
+Icon usage is limited to a small set for social links and form states — **remove the Material
 Symbols dependency from the mock**; inline SVG only, no icon font.
 
 ---
 
 ## 7. Components
 
-**Project tile** — `aspect-card`, `card-face`, 1px `deep-teal`/15%. Mono sequence number top-left in
-gold; suit glyph bottom-right rotated 180°. Image well in `surface-sunken`. Title Karla 700/18px,
+**Project tile** — `surface-raised`, 1px `deep-teal`/15%, sized by its content. Mono sequence number
+top-left in gold. ~~`aspect-card`; suit glyph bottom-right rotated 180°.~~ Both removed with the
+metaphor; the category now appears as text in the body. Image well in `surface-sunken` at `16/10`
+so the grid stays even across tiles whose summaries differ in length. Title Karla 700/18px,
 one-line outcome in `ink-muted`, up to three mono stack chips. The whole tile is a single `<a>` to
-`/work/[slug]`. Hover: `translateY(-4px)` and `--shadow-card-hover` over 300ms; image scales to
-1.05 over 700ms. No flip, no rotation.
+`/work/[slug]`. Hover: `translateY(-4px)` and `--shadow-panel-hover` over 300ms; image scales to
+1.05 over 700ms. No flip, no rotation — and now there is no flip or rotation anywhere on the site
+to make an exception of.
 
 **Buttons** — Primary: `luminous-cyan` fill, `ink-navy` text, `radius-lg`, mono uppercase 12px,
-+0.1em. Secondary: `card-face` fill with 1px `deep-teal`/20% border. Hover lifts 4px. Disabled drops
++0.1em. Secondary: `surface-raised` fill with 1px `deep-teal`/20% border. Hover lifts 4px. Disabled drops
 to `outline-variant` fill with `ink-muted` text and no lift. Buttons never become pills.
 
-**Form fields** — `card-face` fill, 1px `outline-variant`, `radius-DEFAULT`, Karla 16px (never
+**Form fields** — `surface-raised` fill, 1px `outline-variant`, `radius-DEFAULT`, Karla 16px (never
 smaller — 16px prevents iOS zoom-on-focus). Label above in mono `label-sm`. Focus:
 2px `luminous-cyan` ring at 2px offset. Error: 1px `error` border, message below in Karla 14px
 `error`, tied via `aria-describedby`.
@@ -214,13 +257,27 @@ middot, wrapping to two lines on mobile.
 Syntax: `deep-teal` keywords, `secondary` (#735C00) strings, `outline` comments.
 
 **Navigation** — one nav, not two. The mock defines both a top bar and an 80px left rail, both
-`hidden md:flex fixed` — they collide. Ship the **left rail on desktop** (80px, `card-face`, 1px
-`outline-variant` right border, suit-glyph links, scroll-progress rail at the bottom) and a **sticky
-top bar on mobile** (56px, name left, menu right).
+`hidden md:flex fixed` — they collide. Ship the **sticky top bar at every width** (56px,
+`surface-raised`, 1px `outline-variant` bottom border, name left, links right). This supersedes the
+earlier resolution, which kept the left rail on desktop and the bar on mobile only; one bar at all
+widths means the accessible tree has a single navigation landmark by construction rather than by
+breakpoint, and it removes the shell's 80px left padding.
 
-**Scroll rail (the dragon)** — 2px `deep-teal` line at the base of the left rail that fills with
-scroll progress, with one slight sine curve. On mobile it becomes a 2px top progress bar. It reads
-as a progress indicator first and a dragon second. Disabled under `prefers-reduced-motion`.
+Links are **visible text labels at every width**. They briefly carried a suit glyph with the label
+`sr-only` below `sm`, which fit because the glyph was doing the work on a phone; with the suits
+removed a hidden label would leave the bar visually empty at 375px. The horizontal padding tightens
+below `sm` (`px-xs` on links, `px-sm` on the bar) to buy the room the visible labels cost — measured
+at 375px, not assumed.
+
+The label is the accessible name, so WCAG 2.5.3 holds without an `aria-label`. Labels are shortened
+from their section headings ("Selected work" → "Work"); the heading stays long, the link stays
+short. Every link is at least 44×44 including the name, which needs `min-w-11` at 375px where
+"MHN" alone measures 35px.
+
+**Scroll rail (the dragon)** — 2px `deep-teal` line that fills with scroll progress, with one
+slight sine curve. It sits directly under the nav bar as a horizontal strip at every width (the
+vertical `rail` variant went unused when the left rail did). It reads as a progress indicator first
+and a dragon second. Disabled under `prefers-reduced-motion`.
 
 ---
 
@@ -247,12 +304,14 @@ replaced** — it is exactly the register this brand rejects.
 Non-negotiable, verified before merge:
 
 - All text meets WCAG 2.2 AA. Specifically check: `ink-muted` on `cool-stock` (7.9:1 ✓),
-  `outline` on `card-face` (4.6:1 ✓), gold on white (1.9:1 ✗ — decorative only, never text).
+  `outline` on `surface-raised` (4.6:1 ✓), gold on white (1.9:1 ✗ — decorative only, never text).
 - Visible focus on every interactive element: 2px `luminous-cyan`, 2px offset. Never `outline: none`.
-- `prefers-reduced-motion: reduce` disables the deal, the rail fill, tile lifts, and image scale.
+- `prefers-reduced-motion: reduce` disables the rail fill, tile lifts, and image scale. (It used to
+  disable the deal too; there is no entrance animation left to disable — see §5.)
   Everything renders in final state.
 - Semantic landmarks, one `<h1>` per page, heading levels never skipped.
-- Suit glyphs `aria-hidden` with adjacent text; form errors announced via `aria-live="polite"`.
+- Every inline SVG is `aria-hidden` with adjacent text — the scroll rail is the remaining one, the
+  suit pips having been removed. Form errors announced via `aria-live="polite"`.
 - Keyboard-operable throughout; no hover-only affordances.
 - Tap targets ≥44×44px on mobile.
 
@@ -279,4 +338,4 @@ The mock uses the Tailwind v3 CDN with a JS `tailwind.config`. **Both are wrong 
 - The mock's Material Design token names (`on-surface-variant`, `surface-container-highest`, and so
   on) are noise carried in from a generator. Use only the tokens named in §2.
 - Keep utility classes in the markup. Reach for `@apply` only for the three repeated recipes:
-  `.card-shadow`, `.card-hover`, `.animate-deal`.
+  `.panel-shadow`, `.panel-hover`. (`.animate-deal` was the third; it is deleted — see §5.)

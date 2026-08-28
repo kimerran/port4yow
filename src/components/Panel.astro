@@ -1,0 +1,34 @@
+---
+/**
+ * BRAND §4/§7 — the raised surface: `surface-raised`, 1px `deep-teal`/15%,
+ * `radius-lg` 8px, `--shadow-panel`.
+ *
+ * This was `Card.astro`, and it carried `aspect-card` (5:7) so every surface on
+ * the site was literally the shape of a playing card. The card metaphor is gone,
+ * so the ratio is gone with it: a panel is now as tall as its content, and a
+ * caller that wants a specific ratio asks for one.
+ *
+ * Nothing on this site is a circle or a perfect square, and there is no
+ * `rounded-full` anywhere — that part of BRAND §4 still holds.
+ */
+interface Props {
+  /** Renders as <a> when set, so the whole panel is one link target. */
+  href?: string;
+  class?: string;
+  /** Lift on hover. Off for static surfaces. */
+  interactive?: boolean;
+}
+
+const { href, class: className = "", interactive = false } = Astro.props;
+const Tag = href ? "a" : "div";
+
+const base =
+  "panel-shadow relative block overflow-hidden rounded-lg border border-deep-teal/15 bg-surface-raised";
+---
+
+<Tag
+  {...href ? { href } : {}}
+  class:list={[base, interactive && "panel-hover", className]}
+>
+  <slot />
+</Tag>

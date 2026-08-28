@@ -1,92 +1,75 @@
 ---
 import ScrollRail from "./ScrollRail.astro";
-import SuitGlyph from "./SuitGlyph.astro";
 
 /**
- * BRAND §7 — ONE navigation, not two. The mock defines both a top bar and an 80px
- * left rail, both `hidden md:flex fixed`, and they collide.
+ * One navigation, at the top, at every width.
  *
- * Exactly one <nav> exists in the DOM at any time. The two presentations are
- * mutually exclusive at the `md` breakpoint via `hidden`/`md:flex`, so the
- * accessibility tree never contains two navigation regions — verified in the
- * acceptance check rather than assumed from the classes.
+ * ## What changed and why the comment above it moved
+ *
+ * BRAND §7 previously shipped an 80px left rail on desktop and a 56px sticky top
+ * bar on mobile — two presentations of one `<nav>`, mutually exclusive at `md`.
+ * That resolved a collision in the mock, which defined both. This is now a
+ * single top bar everywhere. BRAND §7 is updated to match; a component that
+ * contradicts the document it cites is worse than either choice.
+ *
+ * Still exactly one `<nav>` in the DOM, so the accessibility tree never contains
+ * two navigation regions — the property the old two-presentation split was
+ * carefully preserving, now true by construction rather than by breakpoint.
+ *
+ * ## The labels are text, at every width
+ *
+ * These links briefly carried a suit glyph with the label `sr-only` below `sm`,
+ * which fit because the glyph was doing the work on a phone. The suits are gone
+ * from the site, so a hidden label would leave the bar visually empty at 375px —
+ * the labels are now visible everywhere, and the horizontal padding tightens
+ * below `sm` to buy the room that costs. Measured at 375px, not assumed.
+ *
+ * The section headings are "Selected work" and "The stack" (BRAND §8). A nav is
+ * not a heading: four full headings do not fit a bar at 375px, and a link
+ * labelled "Work" pointing at a section titled "Selected work" reads correctly.
  */
 
 const links = [
-  { href: "/#work", label: "Selected work", suit: "diamonds" as const },
-  { href: "/#stack", label: "The stack", suit: "spades" as const },
-  { href: "/#background", label: "Background", suit: "hearts" as const },
-  { href: "/#contact", label: "Contact", suit: "clubs" as const },
+  { href: "/#work", label: "Work" },
+  { href: "/#stack", label: "Stack" },
+  { href: "/#background", label: "Background" },
+  { href: "/#contact", label: "Contact" },
 ];
 ---
 
-{/* Desktop: 80px left rail. */}
 <nav
   aria-label="Primary"
-  class="fixed top-0 bottom-0 left-0 z-20 hidden w-20 flex-col items-center gap-lg border-r border-outline-variant bg-card-face py-lg md:flex"
+  class="sticky top-0 z-20 flex h-14 items-center justify-between gap-sm border-b border-outline-variant bg-surface-raised px-sm sm:gap-md sm:px-md md:px-lg"
 >
-  <a
-    href="/"
-    class="flex h-11 min-w-11 items-center justify-center rounded px-sm font-mono text-index-rank text-ink-navy"
-    ><!--
+  {
+    /*
       WCAG 2.5.3 (Label in Name): the accessible name must CONTAIN the visible
-      text. This was `aria-label="Home — Mark Hugh Neri"` over an `aria-hidden`
-      "MHN", so the name did not include the label anyone can see — a
-      voice-control user saying "click MHN" could not activate it. Lighthouse
-      flags it as `label-content-name-mismatch`.
+      text. `MHN` under an `aria-label` of "Home — Mark Hugh Neri" failed that —
+      a voice-control user saying "click MHN" could not activate it, and
+      Lighthouse flagged `label-content-name-mismatch` (#40).
 
-      Now the visible text IS the start of the name, with the rest appended
-      out of sight. No `aria-label`, so the two cannot drift apart again.
-    -->MHN<span
-      class="sr-only"
-    >
-      — home, Mark Hugh Neri</span
-    ></a
-  >
-  <ul class="flex flex-col items-center gap-md">
-    {
-      links.map((link) => (
-        <li>
-          <a
-            href={link.href}
-            class="flex h-11 w-11 items-center justify-center rounded text-ink-muted hover:text-ink-navy"
-          >
-            <SuitGlyph suit={link.suit} />
-            <span class="sr-only">{link.label}</span>
-          </a>
-        </li>
-      ))
-    }
-  </ul>
-
-  {/* BRAND §7 — the rail sits at the BASE of the left rail. */}
-  <div class="mt-auto flex w-full justify-center pb-lg">
-    <div class="h-40">
-      <ScrollRail variant="rail" />
-    </div>
-  </div>
-</nav>
-
-{/* Mobile: 56px sticky top bar. */}
-<nav
-  aria-label="Primary"
-  class="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-outline-variant bg-card-face px-md md:hidden"
->
+      The visible text is still the whole accessible name here. `MHN` below
+      `sm`, the full name above it, and the `sr-only` suffix carries the rest —
+      so whichever half is on screen, the name starts with what you can read.
+    */
+  }
   <a
     href="/"
-    class="flex h-11 items-center rounded pr-sm font-mono text-index-rank text-ink-navy"
-    >Mark Hugh Neri</a
+    class="flex h-11 min-w-11 shrink-0 items-center rounded pr-xs font-mono text-index-rank text-ink-navy sm:pr-sm"
+    ><span class="sm:hidden">MHN</span><span class="hidden sm:inline"
+      >Mark Hugh Neri</span
+    ><span class="sr-only"> — home</span></a
   >
-  <ul class="flex items-center gap-sm">
+
+  <ul class="flex items-center">
     {
       links.map((link) => (
         <li>
           <a
             href={link.href}
-            class="flex h-11 w-11 items-center justify-center rounded text-ink-muted"
+            class="flex h-11 min-w-11 items-center justify-center rounded px-xs font-mono text-label-sm text-ink-muted uppercase hover:text-ink-navy sm:px-sm"
           >
-            <SuitGlyph suit={link.suit} />
-            <span class="sr-only">{link.label}</span>
+            {link.label}
           </a>
         </li>
       ))
@@ -94,7 +77,16 @@ const links = [
   </ul>
 </nav>
 
-{/* Mobile: the rail becomes a 2px top progress bar (BRAND §7). */}
-<div class="sticky top-14 z-20 md:hidden">
+{
+  /*
+    The scroll rail, directly under the bar.
+
+    BRAND §7 put it at the base of the left rail on desktop and made it a 2px
+    top bar on mobile. With no left rail there is only one place it can live, so
+    the `bar` variant now serves every width — which is what the mobile
+    treatment always was.
+  */
+}
+<div class="sticky top-14 z-20">
   <ScrollRail variant="bar" />
 </div>
