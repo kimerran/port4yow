@@ -61,7 +61,14 @@ const canonicalUrl =
 const ogImageUrl = new URL(ogImage ?? ogDefault.src, Astro.site ?? Astro.url)
   .href;
 const ogImageAltText =
-  ogImageAlt ?? "Mark Hugh Neri — software engineer, 14+ years.";
+  /**
+   * Kept in step with `thesis` in `src/site.config.ts` by hand, because it
+   * describes the GENERATED CARD IMAGE rather than the page — and that image has
+   * the same sentence rendered into its pixels. Facebook's debugger showed the
+   * mismatch plainly: og:description said 16+ while og:image:alt and the card
+   * itself still said 14+.
+   */
+  ogImageAlt ?? "Mark Hugh Neri — software engineer, 16+ years.";
 
 /**
  * The footer's outbound links.

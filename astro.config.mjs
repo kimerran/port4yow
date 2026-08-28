@@ -120,6 +120,31 @@ export default defineConfig({
   // SPEC §14.4 — CSRF. Explicit per-route Origin checks are still required
   // on every state-changing handler; this is the framework-level backstop.
   security: {
+    /**
+     * Trust the reverse proxy's forwarded headers — for the ONE host we deploy
+     * to, over https only.
+     *
+     * ## Why this is load-bearing, not hardening
+     *
+     * Railway terminates TLS at its edge and forwards plain HTTP, so
+     * `req.socket.encrypted` is false and the adapter derives
+     * `http://mh.neri.ph` as the request origin. `x-forwarded-proto: https` is
+     * present and says otherwise — but Astro only honours it when
+     * `allowedDomains` is non-empty (see `validateForwardedHeaders`). Empty by
+     * default, so the header was discarded.
+     *
+     * `checkOrigin` below then compared the browser's `Origin:
+     * https://mh.neri.ph` against `http://mh.neri.ph` and returned **403 for
+     * every form submission in production** — the enhanced path and the no-JS
+     * path alike. JSON bodies are exempt from that check, which is why the
+     * access gate kept working and a `curl -d '{...}'` probe passed while a real
+     * browser could not send a message.
+     *
+     * Scoped rather than permissive: one hostname, https only. A wildcard here
+     * would let a caller spoof the host Astro believes it is serving.
+     */
+    allowedDomains: [{ hostname: "mh.neri.ph", protocol: "https" }],
+
     checkOrigin: true,
 
     /**
