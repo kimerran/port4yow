@@ -1,224 +1,274 @@
 ---
+import { getImage, Image } from "astro:assets";
+import { render } from "astro:content";
 import JsonLd from "../../components/JsonLd.astro";
-import MarkdownBody from "../../components/MarkdownBody.astro";
-import ResponsiveImage from "../../components/ResponsiveImage.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import NextCard from "../../components/NextCard.astro";
-import { getNextProject, getPublishedProject } from "../../lib/project";
-import { SUIT_CATEGORY } from "../../lib/suits";
-
-const { slug } = Astro.params;
-const project = slug ? await getPublishedProject(slug) : null;
-
-/* SPEC §5 — unknown OR non-PUBLISHED slug returns 404. Never a 500, and never a
-   redirect that would leak whether the row exists. The status filter lives in the
-   WHERE clause, so a DRAFT row is indistinguishable from one that never was.
-
-   `Astro.rewrite` rather than `new Response(null, { status: 404 })`: that returned
-   the right STATUS with an empty BODY, so a DRAFT slug rendered a blank page while
-   an unknown slug — which never matches this route — got the real 404. Two
-   different 404s, and the blank one is the case that leaks least helpfully to a
-   human. The rewrite renders 404.astro itself, which sets the 404 status. */
-if (!project) {
-  return Astro.rewrite("/404");
-}
-
-Astro.response.headers.set(
-  "Cache-Control",
-  "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
-);
-
-/* #18 — the next project, wrapping to the first. Null when this is the only
-   published project, in which case the footer is omitted entirely. */
-const next = await getNextProject(project);
-
-const index = String(project.sequence).padStart(2, "0");
-const canonical = new URL(`/work/${project.slug}`, Astro.site ?? Astro.url)
-  .href;
-
-/* SPEC §5 — article JSON-LD. The set:html exception and the `<` escaping that
-   makes it safe both live in JsonLd.astro, so this file never touches raw HTML. */
+import RelatedProjects from "../../components/RelatedProjects.astro";
+import type { Project } from "../../lib/content";
+import { indexOf, listProjects } from "../../lib/content";
 
 /**
- * #34 — a per-project OG image, served through our own origin like every other
- * image (#42). Absolute, because a scraper does not resolve relative URLs.
+ * SPEC §5 — one page per project, prerendered.
  *
- * `coverKey` is the widest WebP: #17 picks its fallback `<img src>` from the
- * non-AVIF rows, and an OG image has to be the format every scraper decodes, so
- * pointing at an AVIF row would be exactly the wrong choice.
+ * This used to be a server route that queried Postgres for a PUBLISHED row and
+ * rewrote to /404 when it found nothing. With projects as files there is no
+ * unknown slug to handle: `getStaticPaths` enumerates exactly the pages that
+ * exist, so anything else is a genuine 404 from the adapter, and a draft simply
+ * has no page built for it — indistinguishable from one that never existed,
+ * which is the property the old status filter was there to guarantee.
  */
-const ogImage = project.coverKey
-  ? new URL(`/api/media/${project.coverKey}`, Astro.site ?? Astro.url).href
-  : undefined;
+export async function getStaticPaths() {
+  const projects = await listProjects();
+  return projects.map((project) => ({
+    params: { slug: project.id },
+    props: { project, projects },
+  }));
+}
+
+/**
+ * Astro infers nothing about `Astro.props` from `getStaticPaths`, so without
+ * this every access below is `any` — which the type-aware lint rules correctly
+ * refuse (`no-unsafe-member-access`). Declaring `Props` is what makes the page
+ * type-checked against the collection schema.
+ */
+interface Props {
+  project: Project;
+  projects: Project[];
+}
+
+const { project, projects } = Astro.props;
+const { data } = project;
+
+/* Markdown from the file, rendered by Astro. `lib/markdown.ts` and its
+   sanitizer are gone with it: the content is authored in this repository and
+   reviewed in a diff, so it is trusted input in a way admin-submitted Markdown
+   never was. */
+const { Content } = await render(project);
+
+/* Everything except the page you are on. `RelatedProjects` picks three of these
+   in the browser — see that component for why the choice is not made here. */
+const others = projects.filter((p) => p.id !== project.id);
+const canonical = new URL(`/work/${project.id}`, Astro.site ?? Astro.url).href;
+
+/**
+ * #34 — a per-project OG image, generated at 1200x630.
+ *
+ * It used to point at the cover asset directly, which is whatever shape the
+ * screenshot happened to be — 1600x660 for one project, 1193x2046 for another.
+ * A portrait OG image is cropped unpredictably by every scraper, and it made the
+ * `og:image:width/height` tags in BaseLayout impossible to state truthfully.
+ *
+ * `fit: "cover"` crops rather than squashing, anchored to the top: a screenshot's
+ * subject is its header, and centre-cropping a tall dashboard yields a band of
+ * empty table body.
+ */
+const ogAsset = await getImage({
+  src: data.cover,
+  width: 1200,
+  height: 630,
+  format: "jpeg",
+  fit: "cover",
+  position: "top",
+});
+const ogImage = new URL(ogAsset.src, Astro.site ?? Astro.url).href;
 
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "Article",
-  headline: project.title,
-  description: project.summary,
+  headline: data.title,
+  description: data.summary,
   url: canonical,
   author: { "@type": "Person", name: "Mark Hugh Neri" },
-  ...(ogImage ? { image: ogImage } : {}),
-  ...(project.publishedAt
-    ? { datePublished: project.publishedAt.toISOString() }
-    : {}),
-  /**
-   * `dateModified` matters more than it looks: a crawler uses it to decide
-   * whether to re-fetch, and an Article without one is treated as never having
-   * changed since it was first seen.
-   */
-  dateModified: project.updatedAt.toISOString(),
+  image: ogImage,
 };
 ---
 
 <BaseLayout
-  title={`${project.title} — Mark Hugh Neri`}
-  description={project.summary}
+  title={`${data.title} — Mark Hugh Neri`}
+  description={data.summary}
   canonical={canonical}
   ogImage={ogImage}
-  ogImageAlt={project.coverAlt ?? undefined}
+  ogImageAlt={data.coverAlt}
   ogType="article"
 >
   <JsonLd data={jsonLd} />
 
-  <article class="flex flex-col gap-2xl py-2xl">
-    {
-      /* 1 · Hero.
-
-        This was a 280px card face standing beside the title, holding nothing but
-        the sequence index and a suit pip — it existed to carry the playing-card
-        look over from the grid. With the metaphor removed it would have been an
-        empty box, so it is gone and the index moved inline above the title,
-        where it is still the same marker of the same ordering (SPEC §5). */
-    }
+  <article class="flex flex-col gap-xl py-xl sm:gap-2xl sm:py-2xl">
+    {/* 1 · Hero */}
     <header class="flex flex-col gap-lg">
       <div class="flex min-w-0 flex-col gap-md">
         <span
           class="font-mono text-index-rank text-metallic-gold"
-          aria-hidden="true">{index}</span
+          aria-hidden="true">{indexOf(project)}</span
         >
         {/* One of only four places the display face appears (BRAND §3). */}
         {
           /* break-words because `headline-lg` has no responsive step the way BRAND §3
-            gives display-xl (96/56/44), and the content is an arbitrary
-            admin-entered title. "reconciliation" alone needs 317px at 48px Bodoni
-            and overflows a 320px viewport by 13px — measured. overflow-wrap only
-            engages when a word genuinely cannot fit, so wider layouts are
-            unaffected. */
+            gives display-xl (96/56/44), and the content is an arbitrary title. */
         }
-        <h1 class="font-display text-headline-lg break-words">
-          {project.title}
-        </h1>
-        <p class="max-w-[66ch] text-body-lg text-ink-muted">
-          {project.summary}
-        </p>
+        <h1 class="font-display text-headline-lg break-words">{data.title}</h1>
+        <p class="max-w-[66ch] text-body-lg text-ink-muted">{data.tagline}</p>
 
         {
-          /* 2 · Metadata strip — mono label-sm, ink-muted, gold middot separators,
-            wrapping to two lines on mobile (BRAND §7). */
+          /* 2 · Metadata.
+
+            BRAND §7 specifies a "metadata strip … items separated by a gold
+            middot, wrapping to two lines on mobile". It wrote that for a handful
+            of items. These projects carry up to 30: as a middot run-on, BlockHub
+            filled NINE lines at 375px and pushed the screenshot off the first
+            screen entirely — measured. The two-line intent is the part worth
+            keeping, so the stack is chips, which wrap into a scannable block
+            instead of one uppercase paragraph.
+
+            `role` and `timeline` used to lead this strip. They are not in the
+            source material these projects were written from, and AGENT §6
+            forbids inventing them. */
         }
-        <ul
-          class="flex flex-wrap items-center gap-x-sm gap-y-xs font-mono text-label-sm text-ink-muted uppercase"
-        >
-          <li>{project.role}</li>
-          <li aria-hidden="true" class="text-metallic-gold">·</li>
-          <li>{project.timeline}</li>
-          <li aria-hidden="true" class="text-metallic-gold">·</li>
-          <li>
-            <span class="sr-only">Category: </span>{SUIT_CATEGORY[project.suit]}
-          </li>
+        <div class="flex flex-wrap items-center gap-sm">
+          <p class="font-mono text-label-sm text-ink-muted uppercase">
+            <span class="sr-only">Category: </span>{data.category}
+          </p>
           {
-            project.stack.map((item) => (
-              <>
-                <li aria-hidden="true" class="text-metallic-gold">
-                  ·
-                </li>
-                <li>{item}</li>
-              </>
+            /* The same badge the grid tile carries. Not strictly asked for, but
+              a claim that appears on the card and then vanishes on the page the
+              card links to reads as a mistake. */
+            data.badge && (
+              <span
+                class:list={[
+                  "rounded px-sm py-xs font-mono text-label-sm uppercase",
+                  data.badge === "Hackathon Winner"
+                    ? "bg-deep-teal text-cool-stock"
+                    : "border border-outline-variant text-ink-muted",
+                ]}
+              >
+                {data.badge}
+              </span>
+            )
+          }
+        </div>
+
+        {
+          /* The primary call to action, at the top.
+
+            A project page's job is to get someone to the thing itself; burying
+            that link under the whole write-up meant it was reached only by
+            people who had already scrolled past everything. Styled as a filled
+            button rather than an underlined link so it reads as the action on
+            the page, not as one more reference. */
+        }
+        {
+          data.liveUrl && (
+            <p>
+              <a
+                href={data.liveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex min-h-11 items-center gap-sm rounded-lg bg-deep-teal px-lg py-sm font-mono text-label-sm text-cool-stock uppercase transition-colors hover:bg-ink-navy focus-visible:bg-ink-navy motion-reduce:transition-none"
+              >
+                Visit the live site
+                <span class="sr-only">(opens in a new tab)</span>
+                <span aria-hidden="true">↗</span>
+              </a>
+            </p>
+          )
+        }
+
+        <ul class="flex flex-wrap gap-xs">
+          <li class="sr-only">Built with:</li>
+          {
+            data.stack.map((item) => (
+              <li class="rounded border border-outline-variant px-sm py-xs font-mono text-label-sm text-ink-muted uppercase">
+                {item}
+              </li>
             ))
           }
         </ul>
       </div>
     </header>
 
-    {/* 3 · The problem */}
-    <section class="flex flex-col gap-md">
-      <h2 class="font-display text-headline-md">The problem</h2>
-      <p class="max-w-[66ch] text-body-lg text-ink-muted">{project.problem}</p>
+    {/* 3 · The screenshot, full width under the header. */}
+    <figure class="flex flex-col gap-sm reveal">
+      <div
+        class="overflow-hidden rounded-lg border border-outline-variant bg-surface-sunken"
+      >
+        {
+          /* `alt=""`, deliberately. The figcaption below carries exactly this
+            text and is already in the accessibility tree, so a matching `alt`
+            makes a screen reader read the same sentence twice in a row. The
+            standard pattern for an image whose visible caption describes it is
+            to mark the image decorative and let the caption speak. The grid tile
+            is the opposite case — no caption there, so it keeps the alt. */
+        }
+        <Image
+          src={data.cover}
+          alt=""
+          widths={[480, 960, 1440]}
+          sizes="(min-width: 1280px) 1280px, 100vw"
+          loading="eager"
+          class="h-auto w-full"
+        />
+      </div>
+      <figcaption class="text-body-md text-ink-muted">
+        {data.coverAlt}
+      </figcaption>
+    </figure>
+
+    {/* 4 · The write-up, straight from the Markdown body. */}
+    <section class="prose-body flex max-w-[66ch] flex-col gap-md reveal">
+      <Content />
     </section>
 
     {
-      /* 4 · What I built — Markdown, sanitised by src/lib/markdown.ts (SPEC §14.6). */
-    }
-    <section class="flex flex-col gap-md">
-      <h2 class="font-display text-headline-md">What I built</h2>
-      <MarkdownBody
-        markdown={project.body}
-        class="max-w-[66ch] text-body-md text-ink-muted"
-      />
-    </section>
+      /* 5 · Repository, and the NDA note.
 
-    {
-      /* Inline screenshots (SPEC §5 block 4). Every derivative that EXISTS is
-        offered — see src/lib/images.ts for why they cannot be guessed from the
-        key. The first is eager: it is the first thing below the fold. */
+        The live-site link moved to the top of the page as a CTA — see the
+        header. It was the single most useful thing on the page and it was
+        sitting below a 2,000-word write-up, which is the wrong end. */
     }
     {
-      project.images.length > 0 && (
-        <div class="flex flex-col gap-lg">
-          {project.images.map((image, i) => (
-            <ResponsiveImage
-              assets={image.assets}
-              caption={image.caption}
-              eager={i === 0}
-            />
-          ))}
-        </div>
-      )
-    }
-
-    {/* 5 · Outcome */}
-    <section class="flex flex-col gap-md">
-      <h2 class="font-display text-headline-md">Outcome</h2>
-      <p class="max-w-[66ch] text-body-lg text-ink-muted">{project.outcome}</p>
-    </section>
-
-    {/* 6 · Links */}
-    {
-      (project.liveUrl || project.repoUrl) && (
+      (data.repoUrl || data.whiteLabel) && (
         <section class="flex flex-col gap-md">
           <h2 class="font-display text-headline-md">Links</h2>
-          <ul class="flex flex-wrap gap-lg">
-            {project.liveUrl && (
-              <li>
-                <a
-                  class="text-deep-teal underline underline-offset-4"
-                  href={project.liveUrl}
-                  rel="noopener noreferrer"
-                >
-                  Live site
-                </a>
-              </li>
-            )}
-            {project.repoUrl && (
-              <li>
-                <a
-                  class="text-deep-teal underline underline-offset-4"
-                  href={project.repoUrl}
-                  rel="noopener noreferrer"
-                >
-                  Repository
-                </a>
-              </li>
-            )}
-          </ul>
+          {data.whiteLabel ? (
+            /* Say why there is no link. A conspicuous gap invites the question
+               this sentence answers. */
+            <p class="max-w-[66ch] text-body-md text-ink-muted">
+              Built under NDA, so the client and the deployment are not named.
+            </p>
+          ) : (
+            <ul class="flex flex-wrap gap-lg">
+              {data.repoUrl && (
+                <li>
+                  <a
+                    class="inline-flex min-h-11 items-center gap-xs text-deep-teal underline underline-offset-4"
+                    href={data.repoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Repository
+                    <span class="sr-only">(opens in a new tab)</span>
+                    <span aria-hidden="true">↗</span>
+                  </a>
+                </li>
+              )}
+            </ul>
+          )}
         </section>
       )
     }
 
     {
-      /* 7 · Next project (#18). Omitted when this is the only published project. */
+      /* 6 · More projects. Omitted when this is the only one.
+
+        This replaced a single "Next project" link that walked a fixed chain by
+        `sequence` — from any given project you always reached the same one, and
+        project 14 was the only route back to project 1. */
     }
-    {next && <NextCard next={next} />}
+    <RelatedProjects others={others} />
+
+    <script>
+      import { initReveal } from "../../scripts/reveal.ts";
+      initReveal();
+    </script>
   </article>
 </BaseLayout>

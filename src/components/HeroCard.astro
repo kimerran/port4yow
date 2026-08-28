@@ -1,73 +1,167 @@
 ---
+import { Image } from "astro:assets";
 import Panel from "./Panel.astro";
+import type { Project } from "../lib/content";
 
 /**
  * BRAND §5 — the signature element.
  *
- * This was a Jack of Diamonds: a 5:7 card face with a Bodoni "J" over a diamond
- * pip in each of two opposite corners, dealt in with a rotate-and-slide entrance.
- * The card metaphor has been removed from the site, so what remains is the part
- * that was never about playing cards — the monogram watermark, the stack list,
- * and the single radial gold wash behind it.
+ * A slideshow of the project screenshots, shuffled on every load. Each frame is
+ * a link to the project it shows, captioned with that project's one-liner, and
+ * a pair of controls steps through them by hand.
  *
- * With the deal gone there is no entrance animation on the site at all. That is
- * the intended end state, not an oversight: BRAND §5 called the deal "the only
- * entrance animation", and removing the thing being dealt removes its reason to
- * exist.
+ * ## Accessibility, now that the frames are links
+ *
+ * They used to be decorative images under one `aria-hidden` wrapper, which was
+ * correct while nothing here was operable. Links are not decoration, so:
+ *
+ * - Only the ACTIVE frame is in the accessibility tree and the tab order. The
+ *   other thirteen are `aria-hidden` with `tabindex="-1"`, or the hero would add
+ *   fourteen tab stops to the top of the page — thirteen of them invisible.
+ * - The link's accessible name is the project title, not the screenshot. The
+ *   title is what the link does; the image is only how it looks.
+ * - `aria-live="off"`: it changes on a timer, and announcing a new project every
+ *   four seconds would make the page unusable with a screen reader. The controls
+ *   are the accessible path through it.
+ *
+ * ## Cost
+ *
+ * `widths={[480, 960]}` overlaps what `ProjectTile` already requests, so the two
+ * share generated files rather than doubling the image payload.
  */
 interface Props {
-  /** Set in IBM Plex Mono at 10px along the lower half of the well. */
-  stack?: string[];
-  /** Rendered at 10% opacity in the inset well. */
-  monogram?: string;
+  projects: Project[];
 }
 
-const { stack = [], monogram = "MHN" } = Astro.props;
+const { projects } = Astro.props;
+
+/** Control hit area. BRAND §9's 44px floor, and these are real buttons. */
+const control =
+  "absolute top-[38%] z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center sm:top-1/2 rounded-full border border-outline-variant bg-surface-raised/85 font-mono text-body-lg text-ink-navy transition-colors hover:bg-surface-raised hover:text-deep-teal motion-reduce:transition-none";
 ---
 
 {
   /* The single radial metallic-gold wash at 8%, falling off fast into cool-stock.
     Decorative, so it never reaches the accessibility tree. */
 }
-<div class="relative flex items-center justify-center" data-hero-panel>
+<div
+  class="relative flex w-full max-w-[480px] shrink-0 items-center justify-center sm:max-w-[600px] lg:max-w-[640px] xl:max-w-[820px]"
+  data-hero-panel
+>
   <div class="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
     <div class="h-full w-full hero-wash"></div>
   </div>
 
-  {/* 280px mobile / 380px desktop, per BRAND §5. */}
-  <div class="w-[280px] md:w-[380px]">
+  <div class="w-full">
     <Panel class="flex flex-col gap-md p-md">
-      {
-        /* The inset well. It kept a fixed height when the 5:7 ratio set the
-          panel's height; now that the panel is content-sized, the well carries
-          its own aspect ratio so the monogram has room to be a watermark rather
-          than a line of text. */
-      }
       <div
-        class="relative flex aspect-[4/3] flex-col justify-end overflow-hidden rounded bg-surface-sunken p-sm"
+        class="relative aspect-[4/3] overflow-hidden rounded bg-surface-sunken sm:aspect-[16/10]"
+        data-hero-slideshow
+        role="region"
+        aria-label="Featured projects"
+        aria-live="off"
       >
         {
-          /* text-[96px] rather than text-display-xl: BRAND §3 sets display-xl to
-            96px, but #9 made that utility responsive (44/56/96) so the hero name
-            never overflows a phone. The monogram is a fixed-size watermark inside
-            a fixed-size panel, so it must not shrink with the viewport — it needs
-            the 96px value without the breakpoints. AGENT §2 asks for arbitrary
-            values to be justified rather than assumed; this is that justification. */
+          projects.map((project, i) => (
+            <div
+              data-hero-frame
+              aria-hidden={i === 0 ? undefined : "true"}
+              class:list={[
+                "absolute inset-0",
+                /* Opacity, not `display`, so the crossfade has something to
+                   animate. `pointer-events-none` on a hidden frame stops a click
+                   landing on the project stacked underneath the one you see. */
+                i === 0 ? "opacity-100" : "pointer-events-none opacity-0",
+              ]}
+            >
+              {
+                /* The live-site link, when there is one. It is a SIBLING of the
+                  main link rather than a child: an <a> inside an <a> is invalid
+                  HTML, and browsers recover from it by closing the outer anchor
+                  early — which silently breaks the larger link. Stacked above
+                  with a higher z-index so the small target wins the click. */
+                project.data.liveUrl && (
+                  <a
+                    href={project.data.liveUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-hero-live
+                    tabindex={i === 0 ? undefined : -1}
+                    class="absolute top-sm right-sm z-30 flex h-11 min-w-11 items-center justify-center gap-xs rounded-full border border-outline-variant bg-surface-raised/90 px-sm font-mono text-label-sm text-ink-navy uppercase transition-colors hover:bg-surface-raised hover:text-deep-teal motion-reduce:transition-none"
+                  >
+                    <span aria-hidden="true">↗</span>
+                    <span class="sr-only">
+                      Visit the live {project.data.title} site (opens in a new
+                      tab)
+                    </span>
+                    <span aria-hidden="true" class="hidden sm:inline">
+                      Live
+                    </span>
+                  </a>
+                )
+              }
+
+              <a
+                href={`/work/${project.id}`}
+                data-hero-link
+                tabindex={i === 0 ? undefined : -1}
+                class="absolute inset-0 block"
+              >
+                <Image
+                  src={project.data.cover}
+                  alt=""
+                  widths={[480, 960]}
+                  sizes="(min-width: 1280px) 820px, (min-width: 640px) 600px, 100vw"
+                  loading={i === 0 ? "eager" : "lazy"}
+                  class="h-full w-full object-cover object-top"
+                />
+
+                {/* The caption, over a gradient rather than a flat bar. A fixed
+                  translucent panel has to survive both a white dashboard and a
+                  black terminal; a gradient into `ink-navy` gives the text a
+                  consistent ground under itself while leaving the top of the
+                  image alone.
+
+                  Weighted 95/80 rather than 90/65: measured against Lantern's
+                  dark wallet UI, the lighter scrim left the tagline competing
+                  with a dropdown behind it. A scrim has to work over the WORST
+                  frame, not the average one. */}
+                <span class="absolute inset-x-0 bottom-0 flex flex-col gap-xs bg-gradient-to-t from-ink-navy/95 via-ink-navy/80 to-transparent px-sm pt-lg pb-sm sm:px-md sm:pt-2xl sm:pb-md">
+                  <span class="font-body text-body-md leading-snug font-bold text-cool-stock sm:text-body-lg">
+                    {project.data.title}
+                  </span>
+                  {/* Clamped to two lines. A 4:3 frame at 375px is ~230px tall,
+                    and a three-line tagline plus the title took a third of it —
+                    the caption started competing with the screenshot it was
+                    supposed to be labelling. */}
+                  <span class="line-clamp-2 text-label-sm leading-snug text-cool-stock/85 sm:text-body-md">
+                    {project.data.tagline}
+                  </span>
+                </span>
+              </a>
+            </div>
+          ))
         }
-        <span
-          class="pointer-events-none absolute inset-0 flex items-center justify-center font-display text-[96px] leading-none text-ink-navy opacity-10 select-none"
-          aria-hidden="true">{monogram}</span
-        >
+
         {
-          stack.length > 0 && (
-            <ul class="relative flex flex-col gap-xs font-mono text-[10px] leading-tight text-ink-muted">
-              {stack.map((item) => (
-                <li>{item}</li>
-              ))}
-            </ul>
-          )
+          /* Controls, visible from the start rather than on hover: a
+            hover-revealed control does not exist on a touch screen, and BRAND §9
+            forbids hover-only affordances outright. */
         }
+        <button type="button" data-hero-prev class:list={[control, "left-sm"]}>
+          <span class="sr-only">Previous project</span>
+          <span aria-hidden="true">&lsaquo;</span>
+        </button>
+        <button type="button" data-hero-next class:list={[control, "right-sm"]}>
+          <span class="sr-only">Next project</span>
+          <span aria-hidden="true">&rsaquo;</span>
+        </button>
       </div>
     </Panel>
   </div>
 </div>
+
+<script>
+  import { initHeroSlideshow } from "../scripts/hero-slideshow.ts";
+  initHeroSlideshow();
+</script>

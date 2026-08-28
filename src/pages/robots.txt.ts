@@ -1,42 +1,32 @@
 import type { APIRoute } from "astro";
-import { env } from "../lib/env";
-
-export const prerender = false;
 
 /**
  * `/robots.txt` (SPEC §15, #34).
  *
- * Two Disallow rules, and they are not decoration: `/admin` and `/api` are both
- * reachable, and a crawler that indexed them would put a login form and an
- * error-shaped JSON response into search results. Middleware already sends
- * `X-Robots-Tag: noindex` on `/admin/*` (#24), but that header is only seen once
- * a page has been FETCHED — robots.txt is what stops the fetch.
+ * One Disallow rule now. `/admin` is gone — there is no admin, no login form and
+ * no session to keep out of an index — so the only thing left worth excluding is
+ * `/api`, which holds the single contact endpoint and has nothing to index.
  *
- * `/api` covers `/api/contact` and `/api/media/…`. There is nothing to index
- * behind either, and crawling media through the app would pull every derivative
- * through our own origin for no benefit.
- *
- * Served dynamically rather than as a static file because the sitemap line has
- * to carry the real origin, and `PUBLIC_SITE_URL` is the only thing that knows
- * it (a hardcoded domain here is wrong in every environment but one).
+ * Prerendered, with the origin taken from astro.config's `site`. It used to be
+ * a server route purely so the Sitemap line could read `PUBLIC_SITE_URL` at
+ * runtime; at build time `site` is the same value from the same source.
  */
-export const GET: APIRoute = () => {
-  const origin = new URL(env.PUBLIC_SITE_URL).origin;
+export const GET: APIRoute = ({ site }) => {
+  if (!site) {
+    throw new Error(
+      "astro.config `site` is unset — robots.txt cannot emit an absolute Sitemap URL. Set PUBLIC_SITE_URL.",
+    );
+  }
 
   const body = [
     "User-agent: *",
-    "Disallow: /admin",
     "Disallow: /api",
     "",
-    `Sitemap: ${origin}/sitemap.xml`,
+    `Sitemap: ${site.origin}/sitemap.xml`,
     "",
   ].join("\n");
 
   return new Response(body, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      // Rarely changes, and a stale copy costs nothing.
-      "Cache-Control": "public, max-age=0, s-maxage=3600",
-    },
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
   });
 };

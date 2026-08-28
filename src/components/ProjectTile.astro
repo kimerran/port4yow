@@ -1,65 +1,108 @@
 ---
+import { Image } from "astro:assets";
 import Panel from "./Panel.astro";
-import { SUIT_CATEGORY, type Suit } from "../lib/suits";
+import type { Project } from "../lib/content";
+import { indexOf } from "../lib/content";
 
 /**
  * BRAND §7 — the project tile. The WHOLE tile is a single <a> to /work/[slug],
  * so there is one link target rather than a nest of them.
  *
+ * Takes the collection entry itself rather than eight loose props. The cover is
+ * an `astro:assets` image from frontmatter, so Astro generates the responsive
+ * derivatives at build time — replacing the S3 upload pipeline, the MediaAsset
+ * rows and the runtime `/api/media` route that used to serve them.
+ *
  * Title is Karla 700/18px, NOT the display face: BRAND §3 calls the mock's
  * `font-headline-md text-body-lg` on tile titles a defect, because Bodoni's
  * hairlines vanish below 32px and read as a rendering bug.
- *
- * Hover lifts 4px over 300ms and scales the image to 1.05 over 700ms. Nothing
- * rotates or flips — with the card metaphor removed, nothing on the site does.
  */
 interface Props {
-  slug: string;
-  sequence: number;
-  title: string;
-  suit: Suit;
-  /** One-line outcome. */
-  summary: string;
-  /** Up to three, per BRAND §7. */
-  stack?: string[];
+  project: Project;
+  /** The first row of the grid is above the fold and should not lazy-load. */
+  eager?: boolean;
 }
 
-const { slug, sequence, title, suit, summary, stack = [] } = Astro.props;
-
-// Mono sequence numbers are a real ordering of the work (BRAND §6): 01, 02, …
-const index = String(sequence).padStart(2, "0");
-const chips = stack.slice(0, 3);
+const { project, eager = false } = Astro.props;
+const { data } = project;
+const chips = data.stack.slice(0, 3);
 ---
 
-<Panel href={`/work/${slug}`} interactive class="group flex flex-col">
-  {/* Sequence index, top-left, gold — a marker, never text (BRAND §2). */}
+<Panel href={`/work/${project.id}`} interactive class="group flex flex-col">
+  {
+    /* Sequence index, top-left, gold — a marker, never text (BRAND §2).
+
+      It sits ON the thumbnail now rather than on the panel's own ground, and a
+      screenshot is an arbitrary image: gold on a white dashboard is close to
+      invisible, gold on a dark one is fine. The scrim gives it a ground of its
+      own so it reads the same over either, without tinting the image. */
+  }
   <span
-    class="absolute top-md left-md z-10 font-mono text-index-rank text-metallic-gold"
-    aria-hidden="true">{index}</span
+    class="absolute top-md left-md z-10 rounded bg-surface-raised/85 px-xs font-mono text-index-rank text-metallic-gold"
+    aria-hidden="true">{indexOf(project)}</span
   >
 
   {
-    /* The image well took half the tile's height when the 5:7 ratio fixed that
-      height. A content-sized panel has no height to halve, so the well carries
-      its own 16:10 ratio and the grid stays even across tiles whose summaries
-      run to different lengths. */
+    /* The thumbnail. `16/10` is set on the wrapper and the image fills it, so a
+      portrait screenshot and a landscape one produce the same tile height and
+      the grid stays even. */
   }
+  {
+    /* The hackathon badge, top-right, opposite the sequence index.
+
+      Same scrim reasoning as the index: it sits on an arbitrary screenshot, so
+      it carries its own ground rather than relying on whatever is behind it. A
+      win gets the filled `deep-teal` treatment and an entry gets the outlined
+      one — the two must not read as the same claim at a glance, which is the
+      whole point of distinguishing them. */
+  }
+  {
+    data.badge && (
+      <span
+        class:list={[
+          "absolute top-md right-md z-10 rounded px-sm py-xs font-mono text-label-sm uppercase",
+          data.badge === "Hackathon Winner"
+            ? "bg-deep-teal text-cool-stock"
+            : "border border-outline-variant bg-surface-raised/90 text-ink-muted",
+        ]}
+      >
+        {data.badge}
+      </span>
+    )
+  }
+
   <div class="aspect-[16/10] w-full overflow-hidden bg-surface-sunken">
     <div
       class="h-full w-full transition-transform duration-700 group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none"
     >
-      <slot name="image" />
+      <Image
+        src={data.cover}
+        alt={data.coverAlt}
+        widths={[480, 960]}
+        sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+        loading={eager ? "eager" : "lazy"}
+        class="h-full w-full object-cover object-top"
+      />
     </div>
   </div>
 
   <div class="flex flex-1 flex-col gap-sm p-md">
-    {/* The category as text. It was never the glyph's job (BRAND §6). */}
+    {/* The category as text. It was never a glyph's job (BRAND §6). */}
     <span class="font-mono text-label-sm text-ink-muted uppercase">
-      {SUIT_CATEGORY[suit]}
+      {data.category}
     </span>
 
-    <h3 class="font-body text-body-lg leading-snug font-bold">{title}</h3>
-    <p class="text-body-md text-ink-muted">{summary}</p>
+    <h3 class="font-body text-body-lg leading-snug font-bold">{data.title}</h3>
+
+    {
+      /* The one-line description, between the title and the outcome. It names
+        what the thing IS; `summary` says what it achieved. Both are needed —
+        "collapses hours of exam authoring into minutes" tells you nothing about
+        what you are looking at until you know it is a classroom platform. */
+    }
+    <p class="text-body-md text-ink-navy">{data.tagline}</p>
+
+    <p class="text-body-md text-ink-muted">{data.summary}</p>
 
     {
       chips.length > 0 && (

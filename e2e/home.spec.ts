@@ -2,13 +2,13 @@ import { expect, test } from "@playwright/test";
 import { fixture } from "./fixture.ts";
 
 /**
- * Home → detail → "next card" (#39, SPEC §5).
+ * Home → detail → "more projects" (#39, SPEC §5).
  *
- * The interesting claim is the last one: **the next-card chain cycles through
- * the full set and wraps.** That is a property of the whole sequence, so it is
- * walked rather than sampled — following the link N times from each of the three
- * seeded projects and checking the path returns to where it started, having
- * visited every project exactly once on the way.
+ * The "next card" chain this used to walk is gone: it followed a fixed order by
+ * `sequence`, so the interesting claim was that it wrapped. The foot of a project
+ * page now shows three OTHER projects picked at random per load, and the claims
+ * worth holding are different — three of them, never yourself, and not the same
+ * three on every visit.
  */
 
 test.describe("home page", () => {
@@ -32,13 +32,23 @@ test.describe("home page", () => {
     const slug = slugs[1] as string;
 
     await page.goto("/");
-    await page.locator(`#work a[href="/work/${slug}"]`).first().click();
+    const tile = page.locator(`#work a[href="/work/${slug}"]`).first();
+
+    /**
+     * The expected title is read from the TILE, not written here.
+     *
+     * It used to be the literal "E2E Project 2", which worked while
+     * `global-setup` seeded the projects it asserted against. The projects are
+     * content files now, so a hardcoded title is a copy of the content that
+     * goes stale the moment the content changes — and it did, immediately.
+     * Reading it makes this a test of the navigation rather than of the seed.
+     */
+    const expected = await tile.locator("h3").innerText();
+    await tile.click();
 
     await expect(page).toHaveURL(new RegExp(`/work/${slug}$`));
     // The right page, not merely a project page.
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-      "E2E Project 2",
-    );
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(expected);
   });
 
   test("a draft project is not linked from the home page", async ({ page }) => {
@@ -52,110 +62,92 @@ test.describe("home page", () => {
   });
 });
 
-test.describe("the next-card chain", () => {
-  test("cycles through every project and wraps back to the start", async ({
-    page,
-  }) => {
-    /**
-     * The expected set comes from the **home page**, not from the seed.
-     *
-     * `admin.spec.ts` publishes a project of its own, and it runs first
-     * alphabetically — so a fixture-derived expectation of three slugs was
-     * stale by the time this ran, and the failure looked like a broken chain
-     * rather than like a stale assumption. Reading what is actually published
-     * makes the test a statement about the feature instead of about the seed.
-     */
-    await page.goto("/");
-    const published = await page
-      .locator('#work a[href^="/work/"]')
-      .evaluateAll((links) => [
-        ...new Set(
-          links.map((l) =>
-            (l.getAttribute("href") ?? "").replace("/work/", ""),
-          ),
-        ),
-      ]);
+test.describe("more projects", () => {
+  test("shows three, and never the one you are on", async ({ page }) => {
+    const { slugs } = fixture();
+    const current = slugs[0] as string;
+    await page.goto(`/work/${current}`);
 
+    const shown = page.locator("[data-related-item]:not([hidden])");
+    await expect(shown).toHaveCount(3);
+
+    const hrefs = await shown
+      .locator("a")
+      .evaluateAll((links) => links.map((l) => l.getAttribute("href")));
+
+    expect(hrefs).toHaveLength(3);
     expect(
-      published.length,
-      "no published projects — nothing to cycle through",
-    ).toBeGreaterThan(2);
-
-    const start = published[0] as string;
-    await page.goto(`/work/${start}`);
-
-    const visited: string[] = [start];
-    for (let i = 0; i < published.length; i++) {
-      const next = page.getByRole("navigation", { name: "Next project" });
-      await expect(next).toBeVisible();
-      await next.getByRole("link").click();
-      await page.waitForURL(/\/work\//);
-      const slug = new URL(page.url()).pathname.replace("/work/", "");
-
-      if (i < published.length - 1) visited.push(slug);
-      else expect(slug, "the chain must wrap to where it started").toBe(start);
-    }
-
-    // Every published project seen exactly once before the wrap.
-    expect([...visited].sort()).toEqual([...published].sort());
-    expect(new Set(visited).size).toBe(published.length);
+      hrefs.includes(`/work/${current}`),
+      "a project linked to itself",
+    ).toBe(false);
+    expect(new Set(hrefs).size, "the same project appeared twice").toBe(3);
   });
 
-  test("the link is labelled by its visible title", async ({ page }) => {
+  test("the hidden candidates are not tab stops", async ({ page }) => {
     /**
-     * This used to be "the accessible name comes from the face-up side": the
-     * link was a card that flipped, its back was `aria-hidden`, and a name
-     * sourced from the back would have left it unlabelled. There are no longer
-     * two sides — but the claim worth keeping is the one that outlived the
-     * mechanism, so it is asserted against the title rather than against
-     * "non-empty", which the old version would have passed on any stray text.
+     * The reason `hidden` is the mechanism rather than `opacity`. Eleven
+     * invisible links at the foot of every project page would be a keyboard
+     * trap in all but name, and nothing else in the suite would notice.
      */
     const { slugs } = fixture();
     await page.goto(`/work/${slugs[0] as string}`);
 
-    const link = page
-      .getByRole("navigation", { name: "Next project" })
-      .getByRole("link");
+    const reachable = await page
+      .locator("[data-related-item][hidden] a")
+      .evaluateAll(
+        (links) =>
+          links.filter((l) => (l as HTMLElement).offsetParent !== null).length,
+      );
 
-    const heading = await page
-      .locator("h1")
-      .evaluate((el) => el.textContent?.trim() ?? "");
-    const name = (
-      await link.evaluate((el) => el.textContent?.trim() ?? "")
-    ).replace(/\s+/g, " ");
+    expect(reachable, "a hidden related project is still rendered").toBe(0);
+  });
 
-    expect(name.length).toBeGreaterThan(0);
-    // It names the project it goes to, and that is a different one.
-    expect(name).not.toContain(heading);
+  test("the selection changes between loads", async ({ page }) => {
+    /**
+     * The claim is that the pick is random per load, not fixed at build time.
+     *
+     * Asserted as "at least two distinct sets across six loads" rather than
+     * "consecutive loads differ": choosing 3 of 13 twice gives the same set
+     * 1 time in 286, so a strict pairwise assertion would fail roughly one run
+     * in a hundred. Six loads all matching is (1/286)^5, which is never.
+     */
+    const { slugs } = fixture();
+    const seen = new Set<string>();
+
+    for (let i = 0; i < 6; i++) {
+      await page.goto(`/work/${slugs[0] as string}`);
+      const hrefs = await page
+        .locator("[data-related-item]:not([hidden]) a")
+        .evaluateAll((links) =>
+          links.map((l) => l.getAttribute("href") ?? "").sort(),
+        );
+      seen.add(hrefs.join("|"));
+    }
+
+    expect(
+      seen.size,
+      "the same three every time — the pick is not random",
+    ).toBeGreaterThan(1);
   });
 });
 
 /**
- * The playing-card metaphor is gone, and these are the guards on it staying gone.
+ * The playing-card metaphor is gone, and this is the guard on it staying gone.
  *
- * Deleting the deal keyframes and the flip classes is the kind of change a later
- * "restore the hero animation" commit reverses without anyone noticing, because
- * nothing else fails when it comes back. `motion.spec.ts` cannot cover it: it
- * runs only under `prefers-reduced-motion`, where a restored animation would be
- * suppressed and the test would pass anyway. This runs with motion enabled.
+ * **This used to also assert that nothing on the page has a computed
+ * `animation-name`** — a blanket "no entrance animation anywhere" rule, written
+ * when removing the card deal had left the site with none. That is retired on
+ * purpose: the site now has scroll reveals and a crossfading slideshow, which
+ * were asked for. Keeping a test that forbids all motion while shipping motion
+ * would mean deleting it in a hurry later, which is how a guard that mattered
+ * gets thrown out alongside one that did not.
+ *
+ * What remains is the part that was always specific to the card: the 5:7 ratio
+ * and the 3D flip. `motion.spec.ts` cannot cover this — it runs only under
+ * `prefers-reduced-motion`, where a restored animation would be suppressed and
+ * the test would pass anyway. This runs with motion enabled.
  */
 test.describe("the card metaphor stays removed", () => {
-  test("nothing on the home page animates on entrance", async ({ page }) => {
-    await page.goto("/");
-    await page.waitForLoadState("networkidle");
-
-    const animated = await page.evaluate(() =>
-      [...document.querySelectorAll("*")]
-        .filter((el) => {
-          const name = getComputedStyle(el).animationName;
-          return name !== "none" && name !== "";
-        })
-        .map((el) => `${el.tagName.toLowerCase()}.${el.className.toString()}`),
-    );
-
-    expect(animated, "an entrance animation is back").toEqual([]);
-  });
-
   test("no element is a 5:7 card face or a flip", async ({ page }) => {
     const { slugs } = fixture();
 

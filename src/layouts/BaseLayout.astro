@@ -2,6 +2,8 @@
 import { Font } from "astro:assets";
 import FacetLattice from "../components/FacetLattice.astro";
 import SiteNav from "../components/SiteNav.astro";
+import ogDefault from "../assets/og-default.jpg";
+import { social } from "../site.config";
 import "../styles/global.css";
 
 /**
@@ -47,9 +49,33 @@ const {
 
 const canonicalUrl =
   canonical ?? new URL(Astro.url.pathname, Astro.site ?? Astro.url).href;
-const ogImageUrl = ogImage
-  ? new URL(ogImage, Astro.site ?? Astro.url).href
-  : undefined;
+/**
+ * Every page gets an OG image, falling back to a generated card.
+ *
+ * A page without one renders as a bare text link in every social preview, and
+ * the home page — the most-shared URL on the site — had none. `og-default.jpg`
+ * is a real 1200x630 card built from the brand tokens, not a screenshot of
+ * something unrelated.
+ */
+const ogImageUrl = new URL(ogImage ?? ogDefault.src, Astro.site ?? Astro.url)
+  .href;
+const ogImageAltText =
+  ogImageAlt ?? "Mark Hugh Neri — software engineer, 14+ years.";
+
+/**
+ * The footer's outbound links.
+ *
+ * `rel="me"` alongside `noopener noreferrer`: it is the machine-readable claim
+ * that these profiles are the same person as this site, which is what the
+ * `sameAs` in the home page's Person JSON-LD asserts in the other direction.
+ * The mail link is not external in the tab sense — opening a compose window in
+ * a new tab leaves an empty one behind.
+ */
+const contactLinks = [
+  { label: "GitHub", href: social.github, external: true },
+  { label: "LinkedIn", href: social.linkedin, external: true },
+  { label: "Email", href: social.email, external: false },
+];
 ---
 
 <!doctype html>
@@ -74,25 +100,44 @@ const ogImageUrl = ogImage
     <meta name="description" content={description} />
     <link rel="canonical" href={canonicalUrl} />
 
+    {
+      /* Crawling and indexing, stated rather than left to the default.
+         `max-image-preview:large` is what lets the OG card render full-width in
+         a result rather than as a thumbnail. */
+    }
+    <meta
+      name="robots"
+      content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    />
+    <meta name="author" content="Mark Hugh Neri" />
+    <meta name="theme-color" content="#EDF3F3" />
+
     <meta property="og:type" content={ogType} />
+    <meta property="og:site_name" content="Mark Hugh Neri" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />
-    {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
+    <meta property="og:image" content={ogImageUrl} />
+    {
+      /* Dimensions let a scraper reserve the space before it has fetched the
+         image, which is the difference between a card that renders immediately
+         and one that pops in — and some scrapers refuse an image they cannot
+         size. Both cards are 1200x630. */
+    }
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     {
       /* A scraper renders this as the image's description; omitting it makes the
          card an unlabelled picture for anyone using a screen reader on it. */
-      ogImageUrl && ogImageAlt && (
-        <meta property="og:image:alt" content={ogImageAlt} />
-      )
     }
+    <meta property="og:image:alt" content={ogImageAltText} />
 
-    <meta
-      name="twitter:card"
-      content={ogImageUrl ? "summary_large_image" : "summary"}
-    />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+    <meta name="twitter:image:alt" content={ogImageAltText} />
   </head>
 
   <body class="min-h-screen bg-cool-stock font-body text-body-md text-ink-navy">
@@ -137,7 +182,36 @@ const ogImageUrl = ogImage
 
       <footer class="mx-auto w-full max-w-[1280px] px-md py-xl md:px-lg">
         {/* Inset to the content column, never full-bleed (BRAND §4). */}
-        <div class="border-t border-deep-teal/10 pt-lg">
+        <div class="flex flex-col gap-lg border-t border-deep-teal/10 pt-lg">
+          <nav aria-label="Elsewhere">
+            <ul class="flex flex-wrap items-center gap-x-lg gap-y-xs">
+              {
+                contactLinks.map((link) => (
+                  <li>
+                    <a
+                      class="nav-underline inline-flex min-h-11 min-w-11 items-center justify-center gap-xs font-mono text-label-sm text-ink-muted uppercase transition-colors hover:text-deep-teal focus-visible:text-deep-teal motion-reduce:transition-none"
+                      href={link.href}
+                      {...(link.external
+                        ? {
+                            target: "_blank",
+                            rel: "noopener noreferrer me",
+                          }
+                        : {})}
+                    >
+                      {link.label}
+                      {link.external && (
+                        <>
+                          <span class="sr-only">(opens in a new tab)</span>
+                          <span aria-hidden="true">↗</span>
+                        </>
+                      )}
+                    </a>
+                  </li>
+                ))
+              }
+            </ul>
+          </nav>
+
           <p
             class="flex flex-wrap items-center gap-x-md gap-y-sm font-mono text-label-sm text-ink-muted uppercase"
           >
@@ -145,9 +219,7 @@ const ogImageUrl = ogImage
             {
               /* SPEC §14.10 requires the privacy note to be linked from the
                  footer, and the footer lives here — so it is on every public
-                 page by construction rather than by remembering. A plain <a>:
-                 it inherits the global focus ring (BRAND §9), and the underline
-                 is not the only thing distinguishing it. */
+                 page by construction rather than by remembering. */
             }
             <a
               class="inline-flex min-h-11 items-center underline underline-offset-4 hover:text-deep-teal focus-visible:text-deep-teal"

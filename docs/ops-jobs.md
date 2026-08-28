@@ -1,5 +1,13 @@
 # Scheduled jobs
 
+> **Superseded — there are no scheduled jobs.**
+>
+> All four ran against the database: two rate-limit and session prunes, and SPEC
+> §14.10's contact-message retention sweep. The database is gone, `src/jobs/` is
+> deleted, and `pnpm job` no longer exists. **Do not configure the Railway cron
+> entries described below.** This file is kept as the record of what ran and why.
+> See the amendment at the top of [SPEC.md](SPEC.md).
+
 SPEC §11's three jobs plus SPEC §14.10's retention prune, invoked by Railway
 cron. Each runs through one entry
 point so they share an exit-code contract: **0** on success, **1** on failure,

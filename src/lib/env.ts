@@ -3,6 +3,12 @@ import { z } from "zod";
 /**
  * The single validated entry point for configuration (SPEC §10).
  *
+ * Much shorter than it was. `DATABASE_URL`, the S3 block, the admin seed
+ * credentials, `SESSION_SECRET` and `REDIS_URL` are all gone with the database,
+ * the object store and the admin — thirteen variables that had to be correct
+ * before the site would boot, for a site that is now prerendered HTML plus one
+ * mail route.
+ *
  * Nothing else in this codebase reads `process.env` — AGENT §3 bans it, and
  * `eslint.config.js` enforces that ban everywhere in `src/` except this file.
  *
@@ -73,28 +79,14 @@ const EnvSchema = z
     PORT: z.coerce.number().int().min(1).max(65535).default(4321),
     PUBLIC_SITE_URL: httpUrl("PUBLIC_SITE_URL"),
 
-    // Database
-    DATABASE_URL: z.string().startsWith("postgresql://"),
-    SHADOW_DATABASE_URL: optional(z.string().startsWith("postgresql://")),
-
-    // Admin seed. Consumed by prisma/seed.ts, not by the running server, so the
-    // app must boot without it — see the seed's own stricter checks (SPEC §4).
-    ADMIN_USERNAME: z.string().min(1).default("admin"),
-    ADMIN_PASSWORD: optional(z.string().min(1)),
-    ADMIN_DISPLAY_NAME: z.string().min(1).default("Mark Hugh Neri"),
-
-    // Secrets — never logged, never PUBLIC_*
-    SESSION_SECRET: secret("SESSION_SECRET"),
+    /**
+     * Secrets — never logged, never PUBLIC_*.
+     *
+     * Two, down from three. `SESSION_SECRET` went with the admin: there are no
+     * sessions to sign because there is nothing to log in to.
+     */
     FORM_SECRET: secret("FORM_SECRET"),
     IP_HASH_SALT: secret("IP_HASH_SALT"),
-
-    // Object storage
-    S3_ENDPOINT: httpUrl("S3_ENDPOINT"),
-    S3_REGION: z.string().min(1).default("us-east-1"),
-    S3_BUCKET: z.string().min(1),
-    S3_ACCESS_KEY_ID: z.string().min(1),
-    S3_SECRET_ACCESS_KEY: z.string().min(1),
-    S3_FORCE_PATH_STYLE: boolish.default(true),
 
     // Email
     RESEND_API_KEY: optional(z.string().min(1)),
@@ -104,16 +96,12 @@ const EnvSchema = z
     /**
      * Where mail goes when RESEND_ENABLED is false (SPEC §12 — Mailpit at 1025).
      *
-     * NOT in SPEC §10's variable list: §10 says "false in dev → log to console /
-     * Mailpit instead" without naming a host, and #20 requires the Mailpit path
-     * to work. Defaulted so `cp .env.example .env` still boots, and kept a
-     * variable rather than a constant so a non-default compose file or a CI
-     * container can point at its own SMTP sink. Worth adding to §10.
+     * Defaulted so `cp .env.example .env` still boots, and kept a variable
+     * rather than a constant so a non-default compose file or a CI container can
+     * point at its own SMTP sink.
      */
     SMTP_URL: z.string().startsWith("smtp://").default("smtp://localhost:1025"),
 
-    // Optional
-    REDIS_URL: optional(z.string().startsWith("redis://")),
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   })
   // Fail closed: enabling Resend without a key would silently drop mail (SPEC §7).

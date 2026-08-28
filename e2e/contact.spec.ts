@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { contactMessageByEmail } from "./db.ts";
+import { waitForEmailContaining } from "./mail.ts";
 import { forwardedFor } from "./fixture.ts";
 
 /**
@@ -111,9 +111,13 @@ test.describe("without JavaScript", () => {
 
     expect(response.status()).toBe(200);
 
-    // The status code cannot distinguish accepted from spam. The row can.
-    const row = await contactMessageByEmail(`e2e-${suffix}@example.test`);
-    expect(row?.status).toBe("NEW");
+    /* The status code cannot distinguish accepted from spam — SPEC §7 makes
+       both 200 on purpose. The delivered email can: the spam path returns
+       before the send. */
+    expect(
+      await waitForEmailContaining(`e2e-${suffix}@example.test`),
+      "no email arrived — the submission was accepted-shaped but classified as spam",
+    ).toBe(true);
 
     /**
      * The proof that this is genuinely the no-JS path, and it has to be an

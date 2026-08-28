@@ -1,6 +1,5 @@
 import type { APIRoute } from "astro";
 import { z } from "zod";
-import { db } from "../../lib/db";
 import { verifyFormToken } from "../../lib/formToken";
 import { logger, newCorrelationId } from "../../lib/logger";
 import { isSameOrigin } from "../../lib/origin";
@@ -10,11 +9,19 @@ import { clientIpFrom, consume, hashIp } from "../../lib/ratelimit";
 export const prerender = false;
 
 /**
- * `POST /api/contact` — the full server pipeline (SPEC §7, AGENT §3).
+ * `POST /api/contact` — the only dynamic route on the site (SPEC §7, AGENT §3).
  *
- * Runs in SPEC §7's order: origin, rate limit, validate, honeypot/timing,
- * persist, send. Every step that can refuse does so before the next one runs,
- * so an unparsed field never reaches anything downstream.
+ * Runs in SPEC §7's order minus one step: origin, rate limit, validate,
+ * honeypot/timing, send. Every step that can refuse does so before the next one
+ * runs, so an unparsed field never reaches anything downstream.
+ *
+ * **Persist is gone.** SPEC §7 has the message written to `ContactMessage`
+ * before dispatch, so a provider outage still kept it and the admin inbox showed
+ * it as undelivered. With no database the email IS the record, and the
+ * consequence is worth stating plainly rather than burying: if the provider
+ * fails, the message is lost. The spam audit trail goes the same way — a caught
+ * submission is no longer stored as `status: SPAM` for later threshold tuning,
+ * it is logged and dropped.
  */
 
 /**
@@ -111,7 +118,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     // one shared bucket. The IP is hashed immediately, so no raw address exists
     // past this line (SPEC §14.10).
     const ipHash = hashIp(clientIpFrom(request, clientAddress));
-    const limit = await consume("contact", ipHash);
+    const limit = consume("contact", ipHash);
 
     if (!limit.allowed) {
       logger.warn("contact rate limited", {
@@ -177,23 +184,14 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
         ? null
         : token.reason;
 
-    // 5 · Persist. `ipHash` only — the raw address was never stored anywhere.
-    const message = await db.contactMessage.create({
-      data: {
-        name: data.name,
-        email: data.email,
-        message: data.message,
-        status: isSpam ? "SPAM" : "NEW",
-        ipHash,
-        userAgent: request.headers.get("user-agent")?.slice(0, 512) ?? null,
-      },
-      select: { id: true },
-    });
-
     if (isSpam) {
+      /**
+       * Dropped, not delivered — and answered with the SAME 200 as a real
+       * submission. SPEC §7 is explicit that a bot is never told it was caught,
+       * which is why this returns before the send rather than refusing.
+       */
       logger.info("contact classified as spam", {
         correlation_id: correlationId,
-        message_id: message.id,
         // Why, for tuning the thresholds later. No user content.
         reason: spamReason,
       });
@@ -201,23 +199,33 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     }
 
     /**
-     * 6 · Send. `sendContactEmail` never throws and owns writing `resendId` and
-     * `deliveredAt` (#20), so there is no delivery bookkeeping here — doing it
-     * in both places is how the two drift apart.
+     * 5 · Send. `sendContactEmail` never throws, so a provider outage returns
+     * `{ ok: false }` rather than reaching the catch below.
      *
-     * 7 · A failure still returns 200. The message is already in the database,
-     * which is the part that matters to the visitor; it surfaces in the admin
-     * inbox as undelivered because `deliveredAt` stays null.
+     * The correlation id is the idempotency key, standing in for the message row
+     * id that used to fill that role — see `sendContactEmail` for what the
+     * guarantee is now worth.
+     *
+     * A failure still returns 200. There is no longer a stored copy to point at,
+     * but the submitter cannot act on the difference: retrying reaches the same
+     * broken provider, and the honest alternative — "your message was lost" —
+     * costs them the same and reads worse. The log line is the only trace.
      */
-    await sendContactEmail(
+    const sent = await sendContactEmail(
       {
-        messageId: message.id,
+        messageId: correlationId,
         name: data.name,
         email: data.email,
         message: data.message,
       },
       correlationId,
     );
+
+    if (!sent.ok) {
+      logger.error("contact message not delivered and not stored", {
+        correlation_id: correlationId,
+      });
+    }
 
     return json(200, { ok: true });
   } catch (cause) {

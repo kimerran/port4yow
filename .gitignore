@@ -6,8 +6,8 @@ node_modules/
 dist/
 .astro/
 
-# generated Prisma client (AGENT §2 — regenerated in postinstall)
-src/generated/
+# Astro's generated types
+.astro/
 
 # environment — never commit real secrets (SPEC §10)
 .env
@@ -43,7 +43,7 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
-# #39 — generated e2e credentials; never committed (AGENT §5)
+# #39 — the e2e run fixture; never committed
 .playwright/
 test-results/
 playwright-report/

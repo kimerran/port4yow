@@ -82,27 +82,61 @@ test("a tile lift is disabled and the tile stays put on hover", async ({
   expect(before).not.toBeNull();
   expect(after?.y).toBeCloseTo(before?.y ?? 0, 0);
 
-  expect(nothingTransitions(await transitionOf(tile))).toBe(true);
+  /**
+   * No TRANSFORM transition — not "no transition at all", which is what this
+   * asserted before the tile gained its hover border.
+   *
+   * The border-color transition is deliberately kept under reduced motion: it is
+   * a state change rather than movement, and it is the whole hover affordance.
+   * Asserting `nothingTransitions` here would have forced that decision to be
+   * reverted to satisfy a test, which is backwards — so the assertion was
+   * narrowed to the property the preference is actually about.
+   */
+  const style = await transitionOf(tile);
+  expect(
+    style.property.includes("transform"),
+    `transform still transitions: ${style.property}`,
+  ).toBe(false);
 });
 
-test("the next-project link does not lift on hover", async ({ page }) => {
+test("a related-project tile is disabled and stays put on hover", async ({
+  page,
+}) => {
   const { slugs } = fixture();
   await page.goto(`/work/${slugs[0] as string}`);
 
-  const link = page
-    .getByRole("navigation", { name: "Next project" })
-    .getByRole("link");
+  const tile = page.locator("[data-related-item]:not([hidden]) a").first();
+  await expect(tile).toBeAttached();
 
-  // Same shape as the tile-lift check: scroll first, or `hover()`'s own scroll
-  // shows up as a lift.
-  await link.scrollIntoViewIfNeeded();
-  const before = await link.boundingBox();
-  await link.hover();
-  const after = await link.boundingBox();
+  // Scroll first, or `hover()`'s own scroll reads as a lift.
+  await tile.scrollIntoViewIfNeeded();
+  const before = await tile.boundingBox();
+  await tile.hover();
+  const after = await tile.boundingBox();
 
   expect(before).not.toBeNull();
   expect(after?.y).toBeCloseTo(before?.y ?? 0, 0);
-  expect(nothingTransitions(await transitionOf(link))).toBe(true);
+});
+
+test("the hover border highlight survives reduced motion", async ({ page }) => {
+  /**
+   * The lift is motion and is correctly disabled. The border is a STATE change,
+   * and it is the whole affordance — losing it would leave a reduced-motion
+   * visitor with no hover feedback at all, which is a worse outcome than the
+   * animation it was protecting them from.
+   */
+  await page.goto("/");
+  const tile = page.locator("#work a").first();
+  await tile.scrollIntoViewIfNeeded();
+
+  const border = async (): Promise<string> =>
+    tile.evaluate((el) => getComputedStyle(el).borderTopColor);
+
+  const before = await border();
+  await tile.hover();
+  await page.waitForTimeout(400);
+
+  expect(await border(), "the border did not change on hover").not.toBe(before);
 });
 
 test("the image scale on a project tile is disabled", async ({ page }) => {
@@ -126,6 +160,38 @@ test("the image scale on a project tile is disabled", async ({ page }) => {
   );
   expect(["none", "matrix(1, 0, 0, 1, 0, 0)"]).toContain(transform);
   expect(nothingTransitions(await transitionOf(scaled))).toBe(true);
+});
+
+test("the hero slideshow does not advance", async ({ page }) => {
+  await page.goto("/");
+
+  const frames = page.locator("[data-hero-frame]");
+  await expect(frames.first()).toBeAttached();
+  expect(
+    await frames.count(),
+    "no hero frames — the selector is wrong",
+  ).toBeGreaterThan(1);
+
+  /**
+   * The visible frame is the one at opacity 1. Asserting the CHOSEN frame is
+   * unchanged, rather than that some frame is visible: the slideshow still picks
+   * a random still under reduced motion (a still image is not motion), so
+   * "something is showing" would pass even if the timer were running.
+   */
+  const showing = async (): Promise<number> =>
+    frames.evaluateAll((nodes) =>
+      nodes.findIndex((n) => getComputedStyle(n).opacity === "1"),
+    );
+
+  const before = await showing();
+  expect(before, "no frame is visible").toBeGreaterThanOrEqual(0);
+
+  // Longer than the 4s interval, so a running timer would have advanced twice.
+  await page.waitForTimeout(9000);
+
+  expect(await showing(), "the slideshow advanced under reduced motion").toBe(
+    before,
+  );
 });
 
 test("the scroll rail renders full and stops tracking scroll", async ({

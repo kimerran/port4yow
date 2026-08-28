@@ -7,6 +7,42 @@ software engineer. Written to be executed by a coding agent.
 - **Design authority:** `BRAND.md` (do not make visual decisions outside it)
 - **Engineering authority:** `AGENT.md` (conventions, security, workflow)
 
+> ## Amendment — the site is static; the database and the admin are removed
+>
+> This document specifies a server-rendered app with a Postgres data model, an
+> authenticated admin CMS, an S3 media pipeline and a stored contact inbox. All of that was
+> built, shipped, and then removed. **Where this document and the code disagree on the
+> items below, the code is correct and this amendment is the specification.**
+>
+> **What changed**
+>
+> - **Projects are content files.** `src/content/projects/*.md`, validated by a Zod schema in
+>   `src/content.config.ts`, with covers as `astro:assets` imports. §3's `Project`,
+>   `ProjectStack`, `ProjectImage`, `MediaAsset`, `StackItem`, `SiteSetting`, `User`,
+>   `Session` and `ContactMessage` models are gone, and with them Prisma, the adapter and
+>   `DATABASE_URL`.
+> - **`output: "static"`.** Every page is prerendered. `POST /api/contact` and `/healthz`
+>   are the only routes that run per request, and the Node adapter stays for them.
+> - **No admin, no auth.** §6's admin routes, §8's session model and the login rate limit no
+>   longer exist. §14.4's origin check still guards the contact POST.
+> - **No object storage.** §9's upload pipeline, derivative generation and signed-URL media
+>   route are replaced by build-time `astro:assets`. The S3 variables are gone from §10.
+> - **The contact form stores nothing.** §7's pipeline runs origin → rate limit → validate →
+>   honeypot/timing → **send**, with the persist step removed. §7's indistinguishable-200 for
+>   spam still holds. **The cost is real and is not hidden: if Resend fails, the message is
+>   lost**, and there is no spam audit trail for tuning thresholds.
+> - **The rate limiter is in-process.** §7.2's limits and the 50/hour global brake are
+>   enforced, but counters reset on deploy and do not span instances. §11's Postgres backing
+>   and the Redis upgrade path no longer apply.
+> - **`/healthz` is a liveness check only.** §5's `SELECT 1` had no database to probe. It
+>   deliberately does not probe Resend — a third-party blip must not restart a container that
+>   is serving the whole site correctly.
+> - **§14.10's retention job is gone** along with the stored messages it pruned. `/privacy`
+>   was rewritten to say what is actually true rather than to describe the old architecture.
+>
+> **What is unchanged:** §14's security headers and CSP, §15's SEO and the 30KB JS ceiling,
+> §5's public routes and their shapes, and every requirement in `BRAND.md`.
+
 ---
 
 ## 1. Scope

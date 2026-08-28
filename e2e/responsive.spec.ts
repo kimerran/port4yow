@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { isTooSmall, tapTargetFactsFor } from "./a11y-rules.ts";
-import { fixture, forwardedFor } from "./fixture.ts";
+import { fixture } from "./fixture.ts";
 
 /**
- * Layout at 375, 768 and 1440 (#39, BRAND §9).
+ * Layout at 375, 768 and 1440, plus a 320px overflow pass (#39, BRAND §9).
  *
  * Runs under all three viewport projects, so a failure names the width. The
  * two claims are the ones a visitor notices: **nothing scrolls sideways**, and
@@ -27,6 +27,32 @@ test.describe("no horizontal scroll", () => {
     const [, detail] = pages();
     await page.goto(detail as string);
     await checkNoOverflow(page, detail as string);
+  });
+
+  /**
+   * 320px, the narrowest viewport worth supporting (iPhone SE 1st gen, and the
+   * width Chrome's device toolbar opens on).
+   *
+   * A viewport override inside the mobile project rather than a fifth Playwright
+   * project: the claim is only about overflow, and adding a whole project to
+   * re-run every spec 55px narrower costs a quarter of the suite's wall-clock
+   * for one assertion.
+   *
+   * Worth guarding separately from 375 because the things that break here are
+   * different in kind — a long unbroken title, a wide chip, a fixed-width
+   * element — and 375 has enough slack to hide all three.
+   */
+  test("every page fits a 320px viewport", async ({ page }) => {
+    test.skip(
+      !test.info().project.name.includes("375"),
+      "one narrow-width pass is enough; it runs in the mobile project",
+    );
+
+    await page.setViewportSize({ width: 320, height: 800 });
+    for (const path of pages()) {
+      await page.goto(path);
+      await checkNoOverflow(page, `${path} @320`);
+    }
   });
 });
 
@@ -120,30 +146,6 @@ test.describe("tap targets", () => {
       small,
       `the detail page has targets under 44px:\n  ${small.join("\n  ")}`,
     ).toEqual([]);
-  });
-
-  test("the admin dashboard: every interactive element is at least 44x44", async ({
-    page,
-  }, testInfo) => {
-    test.skip(
-      !testInfo.project.name.includes("375"),
-      "the 44px floor is a touch requirement",
-    );
-
-    const { username, password } = fixture();
-    await page.setExtraHTTPHeaders({
-      "x-forwarded-for": forwardedFor(testInfo),
-    });
-    await page.goto("/admin/login");
-    await page.locator("#login-username").fill(username);
-    await page.locator("#login-password").fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/admin$/);
-
-    const small = await smallTargets(page);
-    expect(small, `admin targets under 44px:\n  ${small.join("\n  ")}`).toEqual(
-      [],
-    );
   });
 });
 

@@ -1,0 +1,111 @@
+---
+import { Image } from "astro:assets";
+import Panel from "./Panel.astro";
+import type { Project } from "../lib/content";
+
+/**
+ * Three other projects at the foot of a project page.
+ *
+ * This replaces the single "Next project" link. That link walked a fixed chain
+ * by `sequence`, so from any given project you always landed on the same next
+ * one — fine as navigation, useless as discovery, and it made project 14 the
+ * only route back to project 1.
+ *
+ * ## Why all thirteen are rendered when only three are shown
+ *
+ * The three are picked in the browser, because the page is prerendered: a
+ * build-time pick would be random once and then fixed until the next deploy.
+ * The server therefore emits every candidate and the script reveals three.
+ *
+ * The ones it hides cost nothing to ship: they are `hidden`, so `loading="lazy"`
+ * never fetches their images — a hidden image is not in the viewport, and that
+ * is the whole condition lazy loading tests. The HTML itself is a few hundred
+ * bytes each.
+ *
+ * Without JavaScript the first three stay visible, which is a correct related
+ * list rather than a broken one.
+ */
+interface Props {
+  /** Every project except the one being viewed, in sequence order. */
+  others: Project[];
+}
+
+const { others } = Astro.props;
+
+/** How many are shown at once. */
+const SHOWN = 3;
+---
+
+{
+  others.length > 0 && (
+    <section class="flex flex-col gap-lg" aria-labelledby="more-projects">
+      <h2 id="more-projects" class="font-display text-headline-md">
+        More projects
+      </h2>
+
+      <ul
+        class="grid list-none gap-lg sm:grid-cols-2 lg:grid-cols-3"
+        data-related-list
+      >
+        {others.map((project, i) => (
+          <li data-related-item hidden={i >= SHOWN}>
+            <Panel
+              href={`/work/${project.id}`}
+              interactive
+              class="group flex h-full flex-col"
+            >
+              {
+                /* The same hackathon badge the home grid carries, with the same
+                  filled-vs-outlined split. A project that is a "Hackathon
+                  Winner" on one card and unlabelled on another reads as two
+                  different projects. */
+                project.data.badge && (
+                  <span
+                    class:list={[
+                      "absolute top-md right-md z-10 rounded px-sm py-xs font-mono text-label-sm uppercase",
+                      project.data.badge === "Hackathon Winner"
+                        ? "bg-deep-teal text-cool-stock"
+                        : "border border-outline-variant bg-surface-raised/90 text-ink-muted",
+                    ]}
+                  >
+                    {project.data.badge}
+                  </span>
+                )
+              }
+
+              <div class="aspect-[16/10] w-full overflow-hidden bg-surface-sunken">
+                <div class="h-full w-full transition-transform duration-700 group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none">
+                  <Image
+                    src={project.data.cover}
+                    alt=""
+                    widths={[480]}
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                    loading="lazy"
+                    class="h-full w-full object-cover object-top"
+                  />
+                </div>
+              </div>
+
+              <div class="flex flex-1 flex-col gap-xs p-md">
+                <span class="font-mono text-label-sm text-ink-muted uppercase">
+                  {project.data.category}
+                </span>
+                <h3 class="font-body text-body-lg leading-snug font-bold">
+                  {project.data.title}
+                </h3>
+                <p class="text-body-md text-ink-muted">
+                  {project.data.tagline}
+                </p>
+              </div>
+            </Panel>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+<script>
+  import { initRelatedProjects } from "../scripts/related-projects.ts";
+  initRelatedProjects();
+</script>

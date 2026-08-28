@@ -1,5 +1,12 @@
 # Deploying to Railway
 
+> **Partly superseded.** The service topology changed: there is no Postgres, no
+> MinIO and no migration step. Provision **one web service**, set the variables in
+> `.env.example` (there are seven, not twenty), and skip every section below that
+> attaches a database or a bucket. `PUBLIC_SITE_URL` must be present at BUILD
+> time, not just at runtime — absolute URLs are baked into the sitemap,
+> canonicals and OG tags. The domain, TLS and Resend sections still apply.
+
 SPEC §13 · #41
 
 Everything here that can be verified from this repository has been. Everything

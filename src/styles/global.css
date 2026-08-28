@@ -51,10 +51,6 @@
   --font-body: var(--font-karla), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 
-  --text-headline-lg: 48px; /* project detail titles */
-  --text-headline-lg--line-height: 56px;
-  --text-headline-lg--font-weight: 600;
-
   --text-headline-md: 32px; /* section headings — the floor for Bodoni */
   --text-headline-md--line-height: 40px;
   --text-headline-md--font-weight: 500;
@@ -92,24 +88,59 @@
 }
 
 /* display-xl is deliberately NOT a @theme token.
+
+   BRAND §3 sets this to 96px and calls it "hero only". 96px was sized for a
+   hero whose other half was a 380px card; the slideshow beside it is now more
+   than twice that, and at 96px the name was fighting it for the same eye. It
+   steps 34/44/60/68 — smaller at every width, and the ratio between the two
+   halves is what changed, not the importance of the name.
    A token emits an unconditional `.text-display-xl` into the same layer as this
    @utility, and being later in source it wins — pinning the size to 96px at every
    viewport and leaving the media queries below dead. Measured before the fix:
    96px at 375px, where BRAND §3 requires 44px and says it "must never overflow
    the viewport". The responsive steps live here and only here. */
 @utility text-display-xl {
-  font-size: 44px;
-  line-height: 1.04;
+  font-size: 34px;
+  line-height: 1.08;
   letter-spacing: -0.02em;
   font-weight: 700;
 
   @media (width >= 40rem) {
-    font-size: 56px;
+    font-size: 44px;
   }
 
   @media (width >= 48rem) {
-    font-size: 96px;
-    line-height: 100px;
+    font-size: 60px;
+    line-height: 1.05;
+  }
+
+  @media (width >= 80rem) {
+    font-size: 68px;
+  }
+}
+
+/* headline-lg is NOT a @theme token, for exactly the reason display-xl is not:
+   a token emits an unconditional `.text-headline-lg` into the same layer as this
+   @utility, and being later in source it wins — pinning 48px at every viewport
+   and leaving the media queries below dead.
+
+   48px is a project title on a phone, where it eats most of the first screen
+   before a word of the write-up. BRAND §3's hard floor is "never set Bodoni
+   below 32px", so this steps 32 → 40 → 48 and bottoms out exactly at the floor
+   rather than below it. */
+@utility text-headline-lg {
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 600;
+
+  @media (width >= 40rem) {
+    font-size: 40px;
+    line-height: 1.15;
+  }
+
+  @media (width >= 48rem) {
+    font-size: 48px;
+    line-height: 56px;
   }
 }
 
@@ -133,18 +164,32 @@
 @utility panel-hover {
   transition:
     transform 300ms ease,
-    box-shadow 300ms ease;
+    box-shadow 300ms ease,
+    border-color 200ms ease;
 
-  &:hover {
+  &:hover,
+  &:focus-visible {
     transform: translateY(-4px);
     box-shadow: var(--shadow-panel-hover);
+    /* The obvious part. A 1px border at 15% opacity moving to 100% is a change
+       you have to look for; 2px of full-strength deep-teal is one you cannot
+       miss. `inset` rather than a real border-width change so the box does not
+       resize and shift the grid by a pixel on hover. */
+    border-color: var(--color-deep-teal);
+    box-shadow:
+      var(--shadow-panel-hover),
+      inset 0 0 0 2px var(--color-deep-teal);
   }
 
-  /* BRAND §9 — reduced motion disables tile lifts entirely. */
+  /* BRAND §9 — reduced motion disables tile lifts entirely. The border
+     highlight STAYS: it is a state change, not motion, and it is the part
+     carrying the affordance. Removing it would leave a reduced-motion visitor
+     with no hover feedback at all. */
   @media (prefers-reduced-motion: reduce) {
-    transition: none;
+    transition: border-color 200ms ease;
 
-    &:hover {
+    &:hover,
+    &:focus-visible {
       transform: none;
     }
   }
@@ -161,5 +206,173 @@
   :focus-visible {
     outline: 2px solid var(--color-luminous-cyan);
     outline-offset: 2px;
+  }
+}
+
+/**
+ * The rendered project write-up.
+ *
+ * `MarkdownBody.astro` used to own this: it ran the Markdown through a unified
+ * pipeline, sanitized the HTML, and applied classes on the way. Astro's own
+ * `<Content />` renders the file directly now, so what is left is the styling —
+ * the sanitizer went with the admin, because this content is authored in the
+ * repository and reviewed in a diff rather than submitted through a form.
+ *
+ * Descendant selectors rather than utilities in markup, because there is no
+ * markup to put them on: the elements come from the Markdown.
+ */
+@utility prose-body {
+  & h2 {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-ink-navy);
+    margin-block-start: var(--spacing-lg);
+  }
+
+  & h2:first-child {
+    margin-block-start: 0;
+  }
+
+  & p {
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--color-ink-muted);
+  }
+
+  & ul {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding-inline-start: var(--spacing-md);
+    list-style: disc;
+  }
+
+  & li {
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--color-ink-muted);
+  }
+
+  & li::marker {
+    color: var(--color-metallic-gold);
+  }
+
+  & strong {
+    font-weight: 700;
+    color: var(--color-ink-navy);
+  }
+
+  /* Inline code inside prose. Sits on the sunken ground so it reads as a token
+     rather than as emphasis. */
+  & code {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    background: var(--color-surface-sunken);
+    border: 1px solid var(--color-outline-variant);
+    border-radius: var(--radius-DEFAULT);
+    padding: 1px 4px;
+  }
+
+  & a {
+    color: var(--color-deep-teal);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+}
+
+/**
+ * Scroll reveal.
+ *
+ * ## The default is VISIBLE, and that is the important part
+ *
+ * The hiding only applies under `[data-reveal-ready]`, which `reveal.ts` sets on
+ * <html> at startup. So with JavaScript off, blocked, or still loading, every
+ * `.reveal` block is plain visible content — the failure mode of a
+ * reveal-on-scroll implementation is otherwise a blank page, and it is a failure
+ * mode that never shows up in development because the script always loads there.
+ *
+ * The script also declines to set the attribute at all under
+ * `prefers-reduced-motion`, so that preference takes the same path as no-JS
+ * rather than needing its own rule here.
+ */
+@utility reveal {
+  transition:
+    opacity 600ms ease,
+    transform 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+[data-reveal-ready] .reveal {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+[data-reveal-ready] .reveal.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/**
+ * A staggered variant for grid children, so a row of tiles arrives as a row
+ * rather than as one block. The delay is capped: past ~6 items the last card
+ * would be waiting long enough to read as a bug rather than as choreography.
+ */
+[data-reveal-ready] .reveal-stagger > * {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 500ms ease,
+    transform 500ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+[data-reveal-ready] .reveal-stagger.is-revealed > * {
+  opacity: 1;
+  transform: none;
+}
+
+[data-reveal-ready] .reveal-stagger.is-revealed > *:nth-child(1) {
+  transition-delay: 0ms;
+}
+[data-reveal-ready] .reveal-stagger.is-revealed > *:nth-child(2) {
+  transition-delay: 60ms;
+}
+[data-reveal-ready] .reveal-stagger.is-revealed > *:nth-child(3) {
+  transition-delay: 120ms;
+}
+[data-reveal-ready] .reveal-stagger.is-revealed > *:nth-child(n + 4) {
+  transition-delay: 180ms;
+}
+
+/**
+ * The nav underline. Grows from the left on hover and focus rather than
+ * appearing all at once — the cheapest possible "this is alive" signal, on the
+ * element a visitor points at first.
+ */
+@utility nav-underline {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: var(--spacing-xs);
+    right: var(--spacing-xs);
+    bottom: 6px;
+    height: 1.5px;
+    background: var(--color-deep-teal);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 220ms ease;
+  }
+
+  &:hover::after,
+  &:focus-visible::after {
+    transform: scaleX(1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      transition: none;
+    }
   }
 }

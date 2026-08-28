@@ -3,24 +3,12 @@ import Button from "../components/Button.astro";
 import HeroCard from "../components/HeroCard.astro";
 import ProjectTile from "../components/ProjectTile.astro";
 import ContactForm from "../components/ContactForm.astro";
-import RankIndex from "../components/RankIndex.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import JsonLd from "../components/JsonLd.astro";
-import { getHomeData } from "../lib/home";
-import { SUIT_CATEGORY } from "../lib/suits";
+import { listProjects } from "../lib/content";
+import { about, social, stackGroups, thesis } from "../site.config";
 
-const { projects, stackBySuit, settings } = await getHomeData();
-
-// SPEC §5 — cached, purged on any project mutation (#27).
-Astro.response.headers.set(
-  "Cache-Control",
-  "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
-);
-
-const thesis = settings["hero.thesis"] ?? "";
-const about = settings["about.body"] ?? "";
-const github = settings["social.github"];
-const linkedin = settings["social.linkedin"];
+const projects = await listProjects();
 
 /**
  * `Person` JSON-LD (SPEC §15, #34).
@@ -31,14 +19,14 @@ const linkedin = settings["social.linkedin"];
  *
  * `sameAs` carries the social links, which is the property that lets a search
  * engine connect this page to those profiles. Empty entries are dropped rather
- * than emitted blank: #31 stores "" for "no link", and a `sameAs` containing an
- * empty string is worse than an absent one.
+ * than emitted blank: a `sameAs` containing an empty string is worse than an
+ * absent one.
  *
  * The escaping that makes `set:html` safe here lives in JsonLd.astro (#15), so
  * this file never touches raw HTML.
  */
-const sameAs = [github, linkedin].filter(
-  (url): url is string => typeof url === "string" && url.length > 0,
+const sameAs = [social.github, social.linkedin].filter(
+  (url): url is string => url.length > 0,
 );
 
 const personJsonLd = {
@@ -47,12 +35,9 @@ const personJsonLd = {
   name: "Mark Hugh Neri",
   jobTitle: "Full-stack engineer",
   url: new URL("/", Astro.site ?? Astro.url).href,
-  ...(thesis ? { description: thesis } : {}),
+  description: thesis,
   ...(sameAs.length > 0 ? { sameAs } : {}),
 };
-
-// The hero panel's stack list: featured items, in seed order.
-const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
 ---
 
 <BaseLayout title="Mark Hugh Neri — full-stack engineer" description={thesis}>
@@ -65,9 +50,15 @@ const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
       ~21px — measured, not assumed. Below lg the panel stacks under the name. */
   }
   <section
-    class="flex flex-col items-center gap-xl py-2xl lg:flex-row lg:justify-between"
+    class="flex flex-col items-center gap-xl py-xl sm:py-2xl lg:flex-row lg:justify-between"
   >
-    <div class="flex max-w-[66ch] min-w-0 flex-col gap-lg">
+    {
+      /* `flex-1` with `min-w-0`, not a fixed max: the panel beside it is much
+        larger than the 380px it used to be, so the text column has to be able to
+        give up width at `lg` rather than forcing the row past the shell. The
+        66ch prose cap (BRAND §4) is kept as a ceiling, not a floor. */
+    }
+    <div class="flex min-w-0 flex-1 flex-col gap-lg lg:max-w-[66ch]">
       <h1 class="font-display text-display-xl">Mark Hugh Neri</h1>
       <p class="text-body-lg text-ink-muted">{thesis}</p>
       <div class="flex flex-wrap gap-md">
@@ -75,27 +66,19 @@ const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
         <Button variant="secondary" href="#contact">Send a message</Button>
       </div>
     </div>
-    <HeroCard stack={heroStack} />
+    <HeroCard projects={projects} />
   </section>
 
   {/* ---- A · Selected work ---- */}
-  <section id="work" class="flex flex-col gap-lg py-2xl">
-    <h2 class="flex items-baseline gap-md font-display text-headline-md">
-      <RankIndex rank="A" /> Selected work
-    </h2>
+  <section id="work" class="flex flex-col gap-lg py-xl reveal sm:py-2xl">
+    <h2 class="font-display text-headline-md">Selected work</h2>
     {
       projects.length > 0 ? (
-        <ul class="grid list-none gap-lg sm:grid-cols-2 lg:grid-cols-3">
-          {projects.map((project) => (
+        <ul class="reveal-stagger grid list-none gap-lg sm:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project, i) => (
             <li>
-              <ProjectTile
-                slug={project.slug}
-                sequence={project.sequence}
-                title={project.title}
-                suit={project.suit}
-                summary={project.summary}
-                stack={project.stack}
-              />
+              {/* The first row is above the fold on a desktop viewport. */}
+              <ProjectTile project={project} eager={i < 3} />
             </li>
           ))}
         </ul>
@@ -109,17 +92,19 @@ const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
   </section>
 
   {/* ---- 2 · The stack ---- */}
-  <section id="stack" class="flex flex-col gap-lg py-2xl">
-    <h2 class="flex items-baseline gap-md font-display text-headline-md">
-      <RankIndex rank="2" /> The stack
-    </h2>
+  <section id="stack" class="flex flex-col gap-lg py-xl reveal sm:py-2xl">
+    <h2 class="font-display text-headline-md">The stack</h2>
     {/* Mono lists, no logo images (SPEC §5, BRAND §10). */}
-    <div class="grid gap-lg sm:grid-cols-2 lg:grid-cols-4">
+    {
+      /* Three columns, not four: there are six groups, and 4 would leave a
+        ragged 4+2. Six divides cleanly into 3+3. */
+    }
+    <div class="grid gap-lg sm:grid-cols-2 lg:grid-cols-3">
       {
-        stackBySuit.map((group) => (
+        stackGroups.map((group) => (
           <div class="flex flex-col gap-sm">
             <h3 class="font-mono text-label-sm text-ink-navy uppercase">
-              {SUIT_CATEGORY[group.suit]}
+              {group.name}
             </h3>
             <ul class="flex flex-col gap-xs font-mono text-body-md text-ink-muted">
               {group.items.map((item) => (
@@ -133,45 +118,57 @@ const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
   </section>
 
   {/* ---- 3 · Background ---- */}
-  <section id="background" class="flex flex-col gap-lg py-2xl">
-    <h2 class="flex items-baseline gap-md font-display text-headline-md">
-      <RankIndex rank="3" /> Background
-    </h2>
-    {/* Prose capped at 66ch (BRAND §4). */}
-    <p class="max-w-[66ch] text-body-lg text-ink-muted">{about}</p>
+  <section id="background" class="flex flex-col gap-lg py-xl reveal sm:py-2xl">
+    <h2 class="font-display text-headline-md">Background</h2>
+    {
+      /* Prose capped at 66ch (BRAND §4), split on blank lines.
+
+        `about` is two paragraphs now. Rendering it in one <p> would run them
+        together into a wall — the break between "here is my history" and "here
+        is how I work" is the whole structure of the section. */
+    }
+    <div class="flex max-w-[66ch] flex-col gap-md">
+      {
+        about
+          .split("\n\n")
+          .map((para) => <p class="text-body-lg text-ink-muted">{para}</p>)
+      }
+    </div>
   </section>
 
   {/* ---- K · Contact ---- */}
-  <section id="contact" class="flex flex-col gap-lg py-2xl">
-    <h2 class="flex items-baseline gap-md font-display text-headline-md">
-      <RankIndex rank="K" /> Contact
-    </h2>
+  <section id="contact" class="flex flex-col gap-lg py-xl reveal sm:py-2xl">
+    <h2 class="font-display text-headline-md">Contact</h2>
     <ContactForm />
 
     {/* Direct links, alongside the form. */}
     <ul class="flex flex-wrap gap-lg">
       {
-        github && (
+        social.github && (
           <li>
             <a
               class="inline-flex min-h-11 items-center text-deep-teal underline underline-offset-4"
-              href={github}
+              href={social.github}
+              target="_blank"
               rel="noopener noreferrer"
             >
               GitHub
+              <span class="sr-only">(opens in a new tab)</span>
             </a>
           </li>
         )
       }
       {
-        linkedin && (
+        social.linkedin && (
           <li>
             <a
               class="inline-flex min-h-11 items-center text-deep-teal underline underline-offset-4"
-              href={linkedin}
+              href={social.linkedin}
+              target="_blank"
               rel="noopener noreferrer"
             >
               LinkedIn
+              <span class="sr-only">(opens in a new tab)</span>
             </a>
           </li>
         )
@@ -182,5 +179,7 @@ const heroStack = stackBySuit.flatMap((g) => g.items).slice(0, 6);
 
 <script>
   import { initContactForm } from "../scripts/contact-form.ts";
+  import { initReveal } from "../scripts/reveal.ts";
   initContactForm();
+  initReveal();
 </script>

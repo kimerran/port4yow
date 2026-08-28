@@ -1,21 +1,36 @@
 import { createHash } from "node:crypto";
-import { db } from "./db";
 import { env } from "./env";
 import { logger } from "./logger";
 
 /**
- * The shared fixed-window rate limiter (SPEC §7.2, §11, §14.9).
+ * The fixed-window rate limiter for the one remaining dynamic route (SPEC §7.2,
+ * §14.9).
  *
- * Every costly route goes through this: contact, login, media upload. It is
- * backed by the `RateLimit` table, and it is deliberately the only place that
- * decides whether a caller is over its budget.
+ * ## Why this is now in memory, and what that costs
+ *
+ * It was backed by a `RateLimit` table, with a single `INSERT … ON CONFLICT DO
+ * UPDATE` chosen specifically because a read-then-write races under READ
+ * COMMITTED. That reasoning was about *concurrent writers to shared storage*,
+ * and it was correct. With the database gone there is no shared storage left to
+ * race on, so the counter lives in this process.
+ *
+ * The honest limitations, stated rather than discovered later:
+ *
+ * - **Counters reset on deploy and restart.** A determined caller can clear
+ *   their budget by waiting for a deploy. The window is an hour; deploys are
+ *   rarer than that in practice, and the failure mode is a few extra emails.
+ * - **They are per-instance.** Run two containers and the effective limit
+ *   doubles. This site is one container (SPEC §13), and the flood brake below
+ *   is what actually bounds the damage.
+ *
+ * Node is single-threaded per instance, so `Map` mutation here is atomic in the
+ * way the SQL statement had to be made atomic — the increment and the read
+ * cannot interleave.
  */
 
-/** SPEC §14.9 — contact 5/hr/IP, login 10/15min/IP, media upload 30/hr/session. */
+/** SPEC §14.9 — contact 5/hr/IP. Login and upload are gone with the admin. */
 export const RATE_LIMITS = {
   contact: { limit: 5, windowSeconds: 60 * 60 },
-  login: { limit: 10, windowSeconds: 15 * 60 },
-  upload: { limit: 30, windowSeconds: 60 * 60 },
 } as const;
 
 export type RateLimitAction = keyof typeof RATE_LIMITS;
@@ -24,7 +39,9 @@ export type RateLimitAction = keyof typeof RATE_LIMITS;
  * SPEC §7.2 — "a global cap of 50/hour across all IPs as a flood brake".
  *
  * One shared counter, so the 51st contact submission in an hour is refused no
- * matter how many distinct IPs produced the first 50.
+ * matter how many distinct IPs produced the first 50. This matters more now
+ * than it did: it is the bound that does not depend on per-IP bookkeeping
+ * surviving anything.
  */
 export const CONTACT_GLOBAL = { limit: 50, windowSeconds: 60 * 60 } as const;
 
@@ -45,8 +62,7 @@ export interface RateLimitResult {
  * SPEC §14.10 — hashed IPs only, never the raw address, anywhere.
  *
  * The salt makes the hash useless as a rainbow-table lookup: the IPv4 space is
- * small enough to enumerate in full against an unsalted sha256. This value ends
- * up in a primary key column, so it must not be reversible.
+ * small enough to enumerate in full against an unsalted sha256.
  *
  * AGENT §3 also forbids the raw IP in any log line, which is why nothing here
  * ever accepts an IP and a logger in the same breath — the caller hashes first.
@@ -58,138 +74,105 @@ export function hashIp(ip: string): string {
 /**
  * The address to key a per-IP limit on.
  *
- * `clientAddress` is the SOCKET address. Behind a proxy that is the proxy, the
- * same value for every visitor — so a per-IP limiter keyed on it has exactly one
- * bucket and #14.9's "5/hr/IP" silently becomes "5/hr for everyone". Locally
- * there is no proxy and it is correct; on Railway (SPEC §13) there is one, and
- * `@astrojs/node` does not read `X-Forwarded-For` itself (checked: no such
- * handling anywhere in the adapter). Every stored `ipHash` would also be
- * identical, which makes SPEC §14.10's stated purpose for keeping one —
- * anomaly review — impossible.
- *
- * The first entry in `X-Forwarded-For` is the original client; the rest are
- * intermediate proxies appended left to right.
- *
- * ## The trust boundary, stated once
- *
- * This header is only trustworthy because Railway terminates in front of the
- * app and the container is not directly reachable. If that ever stops being
- * true, `X-Forwarded-For` is attacker-controlled and every per-IP limit becomes
- * bypassable by rotating one header — the opposite failure to the one above, and
- * a worse one. Anything else keying on a client IP (login #25, upload) must come
- * through here rather than reading the header again, so this decision lives in
- * one place.
+ * Behind a proxy the socket address is the PROXY, so keying on it would give the
+ * whole internet one shared bucket. `X-Forwarded-For` is a list; the FIRST entry
+ * is the original client. It is caller-controlled and therefore spoofable, which
+ * is exactly why the global flood brake exists as a backstop.
  */
 export function clientIpFrom(request: Request, socketAddress: string): string {
   const forwarded = request.headers.get("x-forwarded-for");
-  if (!forwarded) return socketAddress;
-  const first = forwarded.split(",")[0]?.trim();
+  const first = forwarded?.split(",")[0]?.trim();
   return first && first.length > 0 ? first : socketAddress;
 }
 
-/** `"contact:<ipHash>"` / `"login:<ipHash>"` / `"upload:<sessionId>"` (SPEC §7.2). */
 export function rateLimitKey(action: RateLimitAction, subject: string): string {
   return `${action}:${subject}`;
 }
 
-interface CounterRow {
+interface Counter {
   count: number;
-  expiresAt: Date;
+  expiresAt: number;
 }
 
+const counters = new Map<string, Counter>();
+
 /**
- * Increments one fixed-window counter and returns its new state.
+ * Bounds the map so a stream of unique IPs cannot grow it without limit.
  *
- * ONE statement, no transaction, and deliberately so. A read-then-write — even
- * inside a transaction — races under READ COMMITTED: two concurrent requests
- * both read 4, both write 5, and the 6th request is never refused. `ON CONFLICT
- * DO UPDATE` takes a row lock and evaluates `count + 1` against the committed
- * row, so concurrent callers serialise on that row and no increment is lost.
- *
- * The `CASE` is what makes the window roll over atomically: if the stored window
- * has already expired the row is reset to 1 with a fresh expiry, rather than
- * being deleted by a sweeper first and re-inserted. Doing it in the same
- * statement means there is no instant where an expired row reads as over-limit.
- *
- * Parameterised via Prisma's tagged template — AGENT §3 bans string-concatenated
- * SQL, and `key` is derived from user input.
+ * A sweep on write is enough: entries are only ever added here, so there is no
+ * path that grows the map without passing through this function. A timer would
+ * keep the process awake for no benefit.
  */
-async function bump(key: string, windowSeconds: number): Promise<CounterRow> {
-  const rows = await db.$queryRaw<CounterRow[]>`
-    INSERT INTO "RateLimit" ("key", "count", "expiresAt")
-    VALUES (${key}, 1, now() + make_interval(secs => ${windowSeconds}))
-    ON CONFLICT ("key") DO UPDATE SET
-      "count" = CASE
-        WHEN "RateLimit"."expiresAt" <= now() THEN 1
-        ELSE "RateLimit"."count" + 1
-      END,
-      "expiresAt" = CASE
-        WHEN "RateLimit"."expiresAt" <= now()
-        THEN now() + make_interval(secs => ${windowSeconds})
-        ELSE "RateLimit"."expiresAt"
-      END
-    RETURNING "count", "expiresAt"
-  `;
+const MAX_COUNTERS = 10_000;
 
-  const row = rows[0];
+function sweep(now: number): void {
+  for (const [key, counter] of counters) {
+    if (counter.expiresAt <= now) counters.delete(key);
+  }
+}
 
-  /**
-   * AGENT §1.5 — fail closed. A limiter that returns "allowed" when its own
-   * storage misbehaves is worse than no limiter, because it looks like one.
-   */
-  if (!row) {
-    throw new Error("rate limiter: counter write returned no row");
+/** Increments one fixed-window counter and returns its new state. */
+function bump(key: string, windowSeconds: number, now: number): Counter {
+  const existing = counters.get(key);
+
+  // Rolls the window over in the same step as the increment, so there is no
+  // instant where an expired counter still reads as over-limit.
+  if (!existing || existing.expiresAt <= now) {
+    if (counters.size >= MAX_COUNTERS) sweep(now);
+    const fresh = { count: 1, expiresAt: now + windowSeconds * 1000 };
+    counters.set(key, fresh);
+    return fresh;
   }
 
-  return row;
+  existing.count += 1;
+  return existing;
 }
 
 const toResult = (
-  row: CounterRow,
+  counter: Counter,
   limit: number,
   now: number,
 ): RateLimitResult => {
-  const resetAt = new Date(row.expiresAt);
-  const msLeft = Math.max(0, resetAt.getTime() - now);
+  const msLeft = Math.max(0, counter.expiresAt - now);
   return {
-    allowed: row.count <= limit,
+    allowed: counter.count <= limit,
     limit,
-    remaining: Math.max(0, limit - row.count),
+    remaining: Math.max(0, limit - counter.count),
     // Ceil, never floor: a floored 0 tells the caller to retry immediately and
     // be refused again.
     retryAfterSeconds: Math.ceil(msLeft / 1000),
-    resetAt,
+    resetAt: new Date(counter.expiresAt),
   };
 };
 
 /**
  * Consumes one unit of budget for `action` against `subject`.
  *
- * `subject` must already be a hashed IP for the IP-keyed actions — this module
- * never sees a raw address. Pass `hashIp(ip)`.
+ * `subject` must already be a hashed IP — this module never sees a raw address.
+ * Pass `hashIp(ip)`.
  *
  * Contact additionally consumes the global flood brake, but ONLY once the
- * per-IP check has passed. Consuming it first would let a single abusive IP
- * burn the shared 50/hour budget and lock everyone else out — turning a
- * per-IP limit into a denial of service against the whole form.
+ * per-IP check has passed. Consuming it first would let a single abusive IP burn
+ * the shared 50/hour budget and lock everyone else out — turning a per-IP limit
+ * into a denial of service against the whole form.
  */
-export async function consume(
+export function consume(
   action: RateLimitAction,
   subject: string,
-): Promise<RateLimitResult> {
+): RateLimitResult {
   const { limit, windowSeconds } = RATE_LIMITS[action];
   const now = Date.now();
 
   const own = toResult(
-    await bump(rateLimitKey(action, subject), windowSeconds),
+    bump(rateLimitKey(action, subject), windowSeconds, now),
     limit,
     now,
   );
 
-  if (!own.allowed || action !== "contact") return own;
+  if (!own.allowed) return own;
 
   const global = toResult(
-    await bump(CONTACT_GLOBAL_KEY, CONTACT_GLOBAL.windowSeconds),
+    bump(CONTACT_GLOBAL_KEY, CONTACT_GLOBAL.windowSeconds, now),
     CONTACT_GLOBAL.limit,
     now,
   );
@@ -211,19 +194,7 @@ export async function consume(
   return own;
 }
 
-/**
- * Redis is NOT wired up, and this says so rather than pretending.
- *
- * SPEC §11: "Ship the Postgres-backed rate limiter first; introduce Redis only
- * if the counter write volume becomes a problem." So the Postgres backend is
- * the whole implementation today. But SPEC §7.2 also says the limiter uses
- * Redis "transparently" when `REDIS_URL` is set — and an operator who sets that
- * variable and gets silence would reasonably conclude Redis is absorbing the
- * writes. It is not. One warning at startup, not per request.
- */
-if (env.REDIS_URL) {
-  logger.warn(
-    "REDIS_URL is set but the rate limiter is Postgres-backed; Redis is not in use",
-    { backend: "postgres" },
-  );
+/** Exported for tests, which must be able to start from a known state. */
+export function __resetRateLimits(): void {
+  counters.clear();
 }

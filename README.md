@@ -2,19 +2,12 @@
 
 Personal portfolio of **Mark Hugh Neri**, full-stack developer / software engineer.
 
-A public marketing site with a private admin CMS behind it. Astro SSR, Postgres, and a
-private S3 bucket, deployed to Railway at [`mh.neri.ph`](https://mh.neri.ph).
+A public portfolio site. Astro, prerendered to static HTML with one dynamic route for the
+contact form, deployed to Railway at [`mh.neri.ph`](https://mh.neri.ph).
 
-> ### Status: early implementation — Sprint 1
->
-> The scaffold is in place: `pnpm install`, `pnpm typecheck`, `pnpm build` and `pnpm dev`
-> all work. The rest of the backlog is specified across
-> [43 issues in 8 milestones](https://github.com/kimerran/port4yow/milestones).
->
-> **Not everything in this README runs yet.** `pnpm lint` needs
-> [#3](https://github.com/kimerran/port4yow/issues/3), `pnpm test` needs
-> [#8](https://github.com/kimerran/port4yow/issues/8), and every `db:*` script needs
-> [#5](https://github.com/kimerran/port4yow/issues/5).
+**Projects are files, not database rows.** They live in `src/content/projects/*.md` with
+their screenshots in `src/assets/projects/`, and the site has no database, no admin CMS,
+no object store and no login. Adding a project is a Markdown file and a deploy.
 
 ---
 
@@ -37,31 +30,31 @@ Read all three before writing code.
 ## Scope
 
 **Public** — home page, project detail pages, contact form that emails through Resend.
-**Private** — a single seeded admin account managing projects, stack items, uploaded
-images, and the contact inbox.
+That is the whole site. There is no private surface.
 
-**Out of scope for v1:** public registration, comments, blog, i18n, dark mode, analytics
-dashboards, password-reset flows. (The admin password rotates via the seed/CLI.)
+**Removed deliberately**, having been built and then found not to earn its keep: the admin
+CMS, the database behind it, the media upload pipeline, and the stored contact inbox. The
+content changed a few times a year and cost three admin pages, five actions, three tables
+and an S3 bucket to maintain. See the amendment at the top of [SPEC.md](docs/SPEC.md).
+
+**Out of scope:** public registration, comments, blog, i18n, dark mode, analytics.
 
 ---
 
 ## Stack
 
-| Layer          | Choice                                                                           |
-| -------------- | -------------------------------------------------------------------------------- |
-| Runtime        | Node.js 24 LTS                                                                   |
-| Framework      | Astro 7, `output: "server"`, `@astrojs/node` standalone                          |
-| Language       | TypeScript, `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` |
-| Styling        | Tailwind CSS v4 via `@tailwindcss/vite` — CSS-first, **no config file**          |
-| ORM            | Prisma 7 (Rust-free client + `@prisma/adapter-pg`)                               |
-| Database       | PostgreSQL 17                                                                    |
-| Object storage | S3-compatible — MinIO, private bucket                                            |
-| Validation     | Zod                                                                              |
-| Passwords      | `@node-rs/argon2` (argon2id)                                                     |
-| Email          | Resend (Mailpit in dev)                                                          |
-| Images         | `sharp`                                                                          |
-| Testing        | Vitest + Playwright                                                              |
-| Hosting        | Railway (web + Postgres + MinIO)                                                 |
+| Layer      | Choice                                                                           |
+| ---------- | -------------------------------------------------------------------------------- |
+| Runtime    | Node.js 24 LTS                                                                   |
+| Framework  | Astro 7, `output: "static"`, `@astrojs/node` standalone for one route            |
+| Language   | TypeScript, `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` |
+| Styling    | Tailwind CSS v4 via `@tailwindcss/vite` — CSS-first, **no config file**          |
+| Content    | Astro content collections — Markdown + Zod                                       |
+| Validation | Zod                                                                              |
+| Email      | Resend (Mailpit in dev)                                                          |
+| Images     | `astro:assets` + `sharp`, optimized at build time                                |
+| Testing    | Vitest + Playwright                                                              |
+| Hosting    | Railway (one web container, no attached services)                                |
 
 **No UI framework.** No React, Vue, or Svelte — pages are `.astro`, server-rendered.
 Public pages ship under 30KB of JS, and the only two client scripts are the scroll rail
@@ -76,68 +69,70 @@ a version number; commit the lockfile.
 
 ```
                  ┌──────────────────────────────────────────┐
-   Visitor ────► │ Railway: web (Astro SSR, Node adapter)    │
-                 │  ├─ /            static-ish SSR           │
-                 │  ├─ /work/[slug] SSR                      │
-                 │  ├─ /api/*       endpoints                │
-                 │  └─ /admin/*     session-guarded          │
-                 └───┬───────────────┬───────────────┬───────┘
-                     │               │               │
-        ┌────────────▼──┐   ┌────────▼────────┐   ┌──▼─────────────┐
-        │ Railway       │   │ Railway MinIO   │   │ Resend API     │
-        │ PostgreSQL 17 │   │ (S3 API, private│   │ (outbound only)│
-        │ (private net) │   │  bucket)        │   │                │
-        └───────────────┘   └─────────────────┘   └────────────────┘
+   Visitor ────► │ Railway: web (one Node container)         │
+                 │  ├─ /            prerendered HTML         │
+                 │  ├─ /work/[slug] prerendered HTML         │
+                 │  ├─ /sitemap.xml prerendered              │
+                 │  ├─ /healthz     dynamic (liveness)       │
+                 │  └─ /api/contact dynamic ────────────┐    │
+                 └──────────────────────────────────────┼────┘
+                                                        │
+                                          ┌─────────────▼──┐
+                                          │ Resend API     │
+                                          │ (outbound only)│
+                                          └────────────────┘
 ```
 
-One Astro app serves both frontend and backend — there is no separate API service. Data
-flows one way at request time: page → Prisma → Postgres, with no client-side fetching on
-public pages. Images are uploaded to MinIO and served through a signed-URL redirect
-(`/api/media/[...key]`), so the bucket stays private and the storage host never reaches
-the browser.
+Every page is built to HTML ahead of time and read from disk. The only route that runs per
+request is `POST /api/contact`, which validates, rate-limits and hands the message to
+Resend — it stores nothing. The rate limiter's counters live in the process, so they reset
+on deploy and do not span instances; the global 50/hour flood brake is what actually bounds
+abuse. See `src/lib/ratelimit.ts`, which states this rather than implying durability.
+
+Images are `astro:assets` imports from `src/assets/projects/`. Astro generates the
+responsive WebP derivatives at build time and fingerprints them, so there is no upload
+pipeline, no bucket and no media route.
 
 ---
 
 ## Getting started
 
-Requires Node 24, pnpm (via Corepack), and Docker.
+Requires Node 24 and pnpm (via Corepack). Docker only if you want to see the mail.
 
 ```bash
 pnpm install
-cp .env.example .env      # then fill in the secrets
-pnpm db:up                # Postgres, MinIO, Mailpit
-pnpm db:migrate
-pnpm db:seed
+cp .env.example .env      # then fill in the two secrets
 pnpm dev
 ```
 
-Generate the three required secrets with `openssl rand -base64 48`:
-`SESSION_SECRET`, `FORM_SECRET`, `IP_HASH_SALT`.
+Generate the two required secrets with `openssl rand -base64 48`: `FORM_SECRET` and
+`IP_HASH_SALT`.
 
-`ADMIN_PASSWORD` must be **16+ characters**. The seed refuses to run on a blank, short, or
-placeholder password (`admin`, `password`, `changeme`), and never prints the password it
-sets.
+### Adding a project
 
-With `RESEND_ENABLED=false` the mail layer writes to Mailpit ([localhost:8025](http://localhost:8025))
+Write `src/content/projects/<slug>.md` and drop its screenshot in
+`src/assets/projects/<slug>.jpg`. The frontmatter schema is in `src/content.config.ts` and
+is enforced at build time — a missing field, an over-long summary or a cover path that
+does not resolve fails `pnpm build` rather than shipping. `sequence` sets the grid order
+and the next-project chain; `whiteLabel: true` suppresses the links and says why.
+
+`pnpm mail:up` starts Mailpit. With `RESEND_ENABLED=false` the mail layer writes to Mailpit ([localhost:8025](http://localhost:8025))
 instead of calling Resend, so the full contact flow is testable offline and no real email
 leaves the machine.
 
 ### Scripts
 
-| Script            | Does                                    |
-| ----------------- | --------------------------------------- |
-| `pnpm dev`        | Astro dev server                        |
-| `pnpm build`      | `astro check && astro build`            |
-| `pnpm typecheck`  | `astro check`                           |
-| `pnpm lint`       | `eslint . && prettier --check .`        |
-| `pnpm test`       | Vitest (unit + integration)             |
-| `pnpm test:e2e`   | Playwright                              |
-| `pnpm db:up`      | Start the dev containers                |
-| `pnpm db:migrate` | `prisma migrate dev`                    |
-| `pnpm db:deploy`  | `prisma migrate deploy` (CI/production) |
-| `pnpm db:seed`    | Seed admin, stack, settings             |
-| `pnpm db:reset`   | Reset and reseed                        |
-| `pnpm audit`      | `pnpm audit --audit-level=moderate`     |
+| Script           | Does                                |
+| ---------------- | ----------------------------------- |
+| `pnpm dev`       | Astro dev server                    |
+| `pnpm build`     | `astro check && astro build`        |
+| `pnpm typecheck` | `astro check`                       |
+| `pnpm lint`      | `eslint . && prettier --check .`    |
+| `pnpm test`      | Vitest                              |
+| `pnpm test:e2e`  | Playwright                          |
+| `pnpm mail:up`   | Start Mailpit                       |
+| `pnpm budget:js` | Assert the 30KB per-page JS ceiling |
+| `pnpm audit`     | `pnpm audit --audit-level=moderate` |
 
 ---
 

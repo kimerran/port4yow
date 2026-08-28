@@ -1,15 +1,14 @@
 import { readFileSync } from "node:fs";
 import { FIXTURE_PATH, type E2EFixture } from "./global-setup.ts";
 
-/** What `global-setup.ts` seeded, read once per spec file. */
+/** What `global-setup.ts` collected, read once per spec file. */
 export const fixture = (): E2EFixture =>
   JSON.parse(readFileSync(FIXTURE_PATH, "utf8")) as E2EFixture;
 
 /**
  * A distinct forwarded client per test, per project, per run.
  *
- * SPEC §7 rate-limits contact to 5/hr/IP and login to 10/15min/IP. This suite
- * exceeds both on its own, and every time it bit, the failure named something
+ * SPEC §7 rate-limits contact to 5/hr/IP. This suite exceeds it on its own, and every time it bit, the failure named something
  * else — "the success button never appeared", "sign in did not navigate". It
  * took three attempts to get this right, and each attempt failed for a
  * different reason worth recording:
@@ -26,9 +25,10 @@ export const fixture = (): E2EFixture =>
  * Project name plus title plus a salt generated once per `global-setup` fixes
  * all three: unique within a run, and never reused across runs.
  *
- * Varying the header beats clearing the `RateLimit` table: no shared mutable
+ * Varying the header beats resetting the limiter's counters: no shared mutable
  * state, no ordering assumption, and it exercises `clientIpFrom` — which reads
- * the *first* entry — on the way through. Both blocks below are RFC 5737
+ * the *first* entry — on the way through. It matters more now that the counters
+ * live in the server process, where a spec has no way to reach them at all. Both blocks below are RFC 5737
  * documentation ranges, so these can never route anywhere real.
  */
 export const forwardedFor = (testInfo: {

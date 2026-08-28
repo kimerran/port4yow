@@ -180,15 +180,31 @@ headings, project detail titles, and the closing line. Nowhere else.
 with nothing being dealt it had no subject. Its keyframes, the `.animate-deal` utility and the
 `--aspect-card` token are all deleted from `global.css`.
 
-**There is now no entrance animation on the site at all, and no rotation anywhere.** That is the
-intended end state, not an omission — this section previously called the deal "the only entrance
-animation", so removing it removes the category. The radial wash is still the only gradient. Every
-element is still until the visitor touches it, and on hover only lifts and the image scale remain.
+~~There is now no entrance animation on the site at all.~~ **Superseded.** That was true for as
+long as the site had nothing to animate. It now has:
 
-`e2e/home.spec.ts` guards this: one test asserts no element on the home page has a computed
-`animation-name`, and another asserts nothing anywhere has a `5/7` aspect ratio, `preserve-3d`, or
-`backface-hidden`. Those run with motion **enabled** — `motion.spec.ts` runs only under
-`prefers-reduced-motion`, where a restored animation would be suppressed and pass unnoticed.
+- **Scroll reveal** — sections and grids fade up 16px as they enter the viewport, once, never
+  re-hiding on scroll-up. Staggered by 60ms across grid children, capped at 180ms.
+- **The hero slideshow** — a 700ms crossfade every 5s, paused on hover, on focus, and while the
+  tab is hidden.
+- **A nav underline** that grows from the left on hover and focus.
+- **The tile hover** — a 4px lift plus a 2px `deep-teal` inset border.
+
+Two rules govern all of it. First, `prefers-reduced-motion: reduce` disables every one: no reveal
+(the blocks are simply visible), no auto-advance, no lift. **The tile border highlight is the one
+exception and stays** — it is a state change rather than motion, and it is what carries the
+affordance; removing it would leave a reduced-motion visitor with no hover feedback at all.
+
+Second, **the reveal opts IN to hiding.** The stylesheet hides a `.reveal` block only under
+`[data-reveal-ready]`, which the script sets at startup. Script blocked, failed or still loading ⇒
+nothing is hidden. The inverse (hide in CSS, reveal in JS) turns any script failure into a blank
+page, and it is a failure that never appears in development because the script always loads there.
+
+The radial wash is still the only gradient on the site outside the slideshow caption scrim.
+
+`e2e/home.spec.ts` still guards the card geometry — nothing anywhere has a `5/7` aspect ratio,
+`preserve-3d`, or `backface-hidden` — with motion **enabled**, because `motion.spec.ts` runs only
+under `prefers-reduced-motion` where a regression would be suppressed and pass unnoticed.
 
 ---
 

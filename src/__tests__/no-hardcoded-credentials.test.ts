@@ -181,8 +181,16 @@ describe("the detector works before it is trusted", () => {
   });
 
   it("scans a non-empty file list", () => {
-    // The failure mode that makes every assertion below vacuous.
-    expect(files(SRC).filter(isTest).length).toBeGreaterThan(20);
+    /**
+     * The failure mode that makes every assertion below vacuous.
+     *
+     * The floor was 20, sized to a `src/` that had a test file per library
+     * module. Removing the database, the admin and the storage layer took most
+     * of those with them, so 20 became an assertion about the old architecture
+     * rather than about the scanner. It is a floor, not a count: the point is
+     * only that the glob still resolves to something.
+     */
+    expect(files(SRC).filter(isTest).length).toBeGreaterThan(3);
   });
 });
 

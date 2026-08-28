@@ -1,4 +1,5 @@
 // @ts-check
+import { readFileSync } from "node:fs";
 import { defineConfig, fontProviders } from "astro/config";
 import node from "@astrojs/node";
 import tailwindcss from "@tailwindcss/vite";
@@ -8,24 +9,99 @@ import tailwindcss from "@tailwindcss/vite";
 // injects real variables and SPEC §13 boots `node ./dist/server/entry.mjs`), so
 // without this bridge every page importing `env` 500s under `astro dev`.
 //
-// Node 24 loads the file itself, so this needs no dependency. It must live here
-// rather than in src/: astro.config.mjs is outside the scope of #47's
-// no-restricted-properties ban, so no exemption has to be carved out.
-// Real environment variables keep precedence over the file.
-if (process.env.NODE_ENV !== "production") {
-  try {
-    process.loadEnvFile();
-  } catch {
-    // No .env yet — env.ts will report whatever is actually missing.
+// It must live here rather than in src/: astro.config.mjs is outside the scope
+// of #47's no-restricted-properties ban, so no exemption has to be carved out.
+//
+// ## Why this no longer skips production
+//
+// It used to be wrapped in `if (NODE_ENV !== "production")`, which was fine
+// while every value it supplied was only needed at RUNTIME. `site` is needed at
+// BUILD time — and `astro build` sets NODE_ENV=production, so the guard skipped
+// the file in exactly the case that now needs it, and a local build failed on a
+// PUBLIC_SITE_URL that was sitting in .env all along.
+//
+// Reading it by hand rather than with `process.loadEnvFile()`: that function
+// overwrites values already in the environment, which would let a stale .env on
+// a deploy host beat the real injected variables. Only unset keys are filled, so
+// a real environment variable always wins.
+/**
+ * Parses one `KEY=value` line the way a .env file means it.
+ *
+ * A quoted value is taken verbatim up to its closing quote, so a `#` inside it
+ * survives. An unquoted value ends at the first `#` that follows whitespace —
+ * `.env` here writes `RESEND_ENABLED=false   # false in dev → Mailpit`, and a
+ * naive split produced the string `"false   # false in dev → Mailpit"`, which
+ * `env.ts` then rejected with `RESEND_ENABLED: Invalid input`. That failed the
+ * BUILD, at the first prerendered page, which is the loudest place it could
+ * have surfaced and still took a minute to read.
+ *
+ * @param {string} line
+ * @returns {{ key: string, value: string } | null}
+ */
+function parseEnvLine(line) {
+  const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+  if (!match) return null;
+  const key = match[1];
+  let value = match[2];
+  if (key === undefined || value === undefined) return null;
+
+  const quote = value[0];
+  if (quote === '"' || quote === "'") {
+    const end = value.indexOf(quote, 1);
+    value = end === -1 ? value.slice(1) : value.slice(1, end);
+  } else {
+    value = value.replace(/\s+#.*$/, "").trim();
   }
+
+  return { key, value };
 }
 
-// SPEC §2/§3: server-rendered Astro on the standalone Node adapter.
+try {
+  const text = readFileSync(new URL(".env", import.meta.url), "utf8");
+  for (const line of text.split("\n")) {
+    const entry = parseEnvLine(line);
+    if (!entry) continue;
+    if (process.env[entry.key] !== undefined) continue;
+    process.env[entry.key] = entry.value;
+  }
+} catch {
+  // No .env — CI and production supply the real variables directly.
+}
+
+/**
+ * The origin every absolute URL is built from.
+ *
+ * Prerendered routes have no request to derive one from, so this is the only
+ * source. A production build MUST fail rather than bake `localhost` into the
+ * sitemap, canonicals and OG tags — that is a silent, fully-successful build
+ * that ships URLs no crawler can follow.
+ */
+const siteUrl = process.env.PUBLIC_SITE_URL ?? "http://localhost:4321";
+if (process.env.NODE_ENV === "production" && !process.env.PUBLIC_SITE_URL) {
+  throw new Error(
+    "PUBLIC_SITE_URL is required for a production build — absolute URLs would otherwise point at localhost.",
+  );
+}
+
+// SPEC §2/§3, amended: STATIC Astro on the standalone Node adapter.
+//
+// `output: "server"` rendered every page per request because every page read
+// the database. Projects are files now, so the only route that cannot be built
+// ahead of time is POST /api/contact, which opts out with `prerender = false`.
+// The adapter stays for exactly that one route (and for /healthz).
 // Tailwind v4 is CSS-first: tokens live in @theme in src/styles/global.css.
 // There is no tailwind.config.js and never a CDN script (BRAND §11). CSP in #33.
 export default defineConfig({
-  output: "server",
+  output: "static",
   adapter: node({ mode: "standalone" }),
+  /**
+   * Absolute URLs for the sitemap, robots.txt, canonicals and OG tags.
+   *
+   * Prerendered routes have no request to derive an origin from, so this is the
+   * only source — `sitemap.xml.ts` and `robots.txt.ts` throw at BUILD time if it
+   * is unset rather than emitting relative URLs a crawler cannot follow.
+   */
+  site: siteUrl,
   // `astro dev` takes its port only from --port or server.port; it does not read
   // PORT on its own. SPEC §10 declares PORT as a project variable, so wire it
   // explicitly or `.env`'s PORT silently does nothing in development once #7
@@ -39,26 +115,6 @@ export default defineConfig({
   // on every state-changing handler; this is the framework-level backstop.
   security: {
     checkOrigin: true,
-
-    /**
-     * SPEC §9 allows an 8 MB upload. Astro refuses an Action body over
-     * `actionBodySizeLimit` BEFORE the handler runs, and its default is 1 MiB —
-     * so without this, every upload between 1 MB and 8 MB was rejected with a
-     * raw `CONTENT_TOO_LARGE`, which is most of the range the spec allows and
-     * squarely where real screenshots live. Measured: a valid 5.43 MB JPEG got
-     * `413 Request body exceeds 1048576 bytes` and `processUpload` never ran,
-     * so the app's own 8 MB check and its error copy were dead code.
-     *
-     * 9 MiB, not a round 8: multipart adds boundaries and field names, so a
-     * body carrying an 8 MiB file is slightly larger than the file. The
-     * headroom is deliberately small — a wildly oversized body is still refused
-     * cheaply here, while every legitimate file reaches the app's check, which
-     * is the one that should decide and the one that explains itself.
-     *
-     * `src/lib/__tests__/uploadlimits.test.ts` asserts this stays above
-     * `MAX_UPLOAD_BYTES`, so the two cannot drift apart silently again.
-     */
-    actionBodySizeLimit: 9 * 1024 * 1024,
 
     /**
      * SPEC §14.2 — CSP through Astro's own API rather than hand-rolled header

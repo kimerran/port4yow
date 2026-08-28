@@ -1,6 +1,5 @@
 import { createTransport } from "nodemailer";
 import { Resend } from "resend";
-import { db } from "./db";
 import { env } from "./env";
 import { logger } from "./logger";
 
@@ -14,7 +13,14 @@ import { logger } from "./logger";
  */
 
 export interface ContactEmail {
-  /** `ContactMessage.id`. Doubles as the idempotency key. */
+  /**
+   * The request's correlation id. Doubles as the idempotency key.
+   *
+   * This was `ContactMessage.id` — a database primary key that survived a
+   * restart, which is what made the idempotency guarantee durable. There is no
+   * database now, so see `sendContactEmail` for exactly how much of that
+   * guarantee remains.
+   */
   messageId: string;
   name: string;
   email: string;
@@ -26,8 +32,6 @@ export type SendResult =
       ok: true;
       providerId: string;
       backend: "resend" | "smtp";
-      /** True when a prior send was found and nothing was dispatched. */
-      deduped?: boolean;
     }
   | { ok: false; error: string };
 
@@ -100,39 +104,6 @@ const getResend = (): Resend => {
 };
 
 /**
- * Records the send where the guard above reads it.
- *
- * This is the other half of the idempotency invariant, and it has to live here.
- * With only the READ in this module, a caller that forgot to persist `resendId`
- * broke the guarantee completely — two sends of one id delivered two emails,
- * and the Resend `idempotencyKey` masked it on the Resend path so the failure
- * showed up only on SMTP, the path the acceptance criterion is measured on.
- *
- * Never throws. The email has already gone out by the time this runs, so a
- * failure here must not turn a delivered message into a request-path error —
- * but it IS logged at `error`, because the consequence is that a retry will
- * double-send, and that deserves to be visible.
- */
-async function recordSent(
-  messageId: string,
-  providerId: string,
-  correlationId?: string,
-): Promise<void> {
-  try {
-    await db.contactMessage.update({
-      where: { id: messageId },
-      data: { resendId: providerId, deliveredAt: new Date() },
-    });
-  } catch (cause) {
-    logger.error("contact email sent but not recorded", {
-      correlation_id: correlationId,
-      message_id: messageId,
-      reason: cause instanceof Error ? cause.message : "unknown",
-    });
-  }
-}
-
-/**
  * Sends the contact notification.
  *
  * NEVER THROWS. A provider failure is logged at `error` with the correlation id
@@ -140,44 +111,25 @@ async function recordSent(
  * as undelivered and still answer the submitter (SPEC §7). A contact form that
  * 500s because the mail provider is down has lost the message twice.
  *
- * Idempotency is the `ContactMessage` id, and this module owns BOTH halves of
- * it: it reads `resendId` before dispatch and writes it after, so a caller that
- * never persists anything still cannot produce two emails. Resend's
- * `idempotencyKey` sits underneath as a third line on the production path,
- * covering the crash window between dispatch and the write — the one gap the
- * durable check genuinely cannot see.
+ * ## Idempotency, and what it is now worth
+ *
+ * It used to be durable: `ContactMessage.resendId` recorded that a send had
+ * happened, was read before dispatch, and survived a process restart. That
+ * record is gone with the database, and nothing here replaces it — an
+ * in-memory set would not survive the restart that is the whole reason the
+ * check existed, so pretending otherwise would be worse than the gap.
+ *
+ * What remains is Resend's own `idempotencyKey`, which collapses a retry
+ * provider-side on the production path. The SMTP path has no such concept, so a
+ * retried send in development puts a second copy in Mailpit. Since nothing
+ * retries this route — the browser fires once and the handler does not loop —
+ * the exposure is a visitor pressing submit twice, which produces two distinct
+ * correlation ids and is genuinely two messages.
  */
 export async function sendContactEmail(
   input: ContactEmail,
   correlationId?: string,
 ): Promise<SendResult> {
-  /**
-   * Durable idempotency, and it has to be durable to be worth anything.
-   *
-   * Resend's `idempotencyKey` collapses a retry provider-side, but ONLY on the
-   * Resend path — SMTP has no such concept, so a retried send would put a second
-   * copy in the inbox. `ContactMessage.resendId` is the record that a send
-   * already happened, and it survives a process restart, which an in-memory set
-   * would not.
-   *
-   * The read is deliberately here rather than left to the caller: "sending twice
-   * with the same id results in one email" is a property of this module, and a
-   * caller that forgets the check should not be able to break it.
-   */
-  const existing = await db.contactMessage.findUnique({
-    where: { id: input.messageId },
-    select: { resendId: true },
-  });
-
-  if (existing?.resendId) {
-    return {
-      ok: true,
-      providerId: existing.resendId,
-      backend: env.RESEND_ENABLED ? "resend" : "smtp",
-      deduped: true,
-    };
-  }
-
   const rendered = renderContactEmail(input);
   const from = `Portfolio <${env.CONTACT_FROM_EMAIL}>`;
   const replyTo = headerSafe(input.email);
@@ -211,7 +163,6 @@ export async function sendContactEmail(
         return { ok: false, error: error?.message ?? "no data" };
       }
 
-      await recordSent(input.messageId, data.id, correlationId);
       return { ok: true, providerId: data.id, backend: "resend" };
     }
 
@@ -229,7 +180,6 @@ export async function sendContactEmail(
       messageId: `<${input.messageId}@mh.neri.ph>`,
     });
 
-    await recordSent(input.messageId, info.messageId, correlationId);
     return { ok: true, providerId: info.messageId, backend: "smtp" };
   } catch (cause) {
     logger.error("contact email failed", {

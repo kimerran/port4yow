@@ -6,10 +6,13 @@
 #
 # The build needs devDependencies — astro, vite, the Tailwind compiler, and
 # `astro check` — none of which the running server has any use for. Building in
-# one stage and copying only `dist/`, the production `node_modules` and the
-# generated Prisma client into another keeps that toolchain out of the image
-# that faces the internet, which is a smaller attack surface as well as a
-# smaller pull.
+# one stage and copying only `dist/` and the production `node_modules` into
+# another keeps that toolchain out of the image that faces the internet, which
+# is a smaller attack surface as well as a smaller pull.
+#
+# The image now serves prerendered HTML plus one dynamic route. There is no
+# Prisma client to generate, no migration to run at boot, and no schema to copy
+# in — all of which this file used to carry.
 #
 # ## Node 24, pinned by digest-free tag
 #
@@ -30,15 +33,17 @@ WORKDIR /app
 # Copy the manifests first: this layer only changes when dependencies do, so
 # the install is cached across ordinary source edits.
 COPY package.json pnpm-lock.yaml .npmrc* ./
-COPY prisma ./prisma
-COPY prisma.config.ts ./
 
-# `postinstall` runs `prisma generate`, which needs the schema (copied above)
-# but no database — `prisma.config.ts` omits the datasource when DATABASE_URL is
-# absent precisely so this works.
 RUN pnpm install --frozen-lockfile
 
 COPY . .
+
+# `site` is baked into the sitemap, canonicals and OG tags at BUILD time, so the
+# origin has to be known here rather than at boot. astro.config.mjs throws on a
+# production build without it, which is deliberate: the alternative is an image
+# that builds clean and serves localhost URLs to crawlers.
+ARG PUBLIC_SITE_URL
+ENV PUBLIC_SITE_URL=${PUBLIC_SITE_URL}
 
 # `astro check` runs here as part of `pnpm build`, so a type error fails the
 # image rather than the deploy.
@@ -46,11 +51,11 @@ RUN pnpm build
 
 # ------------------------------------------------------ production deps stage
 #
-# A separate install rather than `pnpm prune --prod` on the build tree: prune
-# re-runs `postinstall`, which is `prisma generate`, and the `prisma` CLI is a
-# devDependency it is in the middle of removing — so it fails with
-# `sh: 1: prisma: not found`. `--ignore-scripts` sidesteps that, and the
-# generated client is copied from the build stage where it was made properly.
+# A separate install rather than `pnpm prune --prod` on the build tree. The
+# original reason was that prune re-ran `postinstall` (`prisma generate`) using
+# the CLI it was removing; there is no postinstall now, but a clean production
+# install is still the clearer way to get a `node_modules` with no build
+# toolchain in it. `--ignore-scripts` stays as a belt-and-braces.
 FROM node:24-bookworm-slim AS deps
 
 RUN corepack enable
@@ -85,9 +90,6 @@ WORKDIR /app
 # would let a code-execution bug write anywhere in the container.
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
-COPY --from=build --chown=node:node /app/src/generated ./src/generated
-COPY --from=build --chown=node:node /app/prisma ./prisma
-COPY --from=build --chown=node:node /app/prisma.config.ts ./prisma.config.ts
 COPY --from=build --chown=node:node /app/package.json ./package.json
 
 USER node
@@ -101,7 +103,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
-# Migrations then serve, matching railway.json's start command. `migrate deploy`
-# only ever applies committed migrations — never `migrate dev` or `db push`
-# (SPEC §13, AGENT §2).
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node ./dist/server/entry.mjs"]
+# Just serve. This used to be `prisma migrate deploy && node …`; with no
+# database there is nothing to migrate, which also removes the failure mode
+# where a bad migration took the container down on boot.
+CMD ["node", "./dist/server/entry.mjs"]
