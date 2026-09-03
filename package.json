@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@astrojs/node": "^11.1.4",
-    "astro": "^7.2.8",
+    "astro": "^7.2.9",
     "nodemailer": "^9.0.5",
     "resend": "^6.24.0",
     "sharp": "^0.35.4",
